@@ -1,0 +1,71 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.env
+
+# Vector Store (can be regenerated)
+vectors/
+faiss_index/
+
+# Data files (if they're large and can be downloaded or generated)
+# Uncomment if you want to exclude data files
+# data/
+
+# Chainlit specific
+.chainlit/
+.chainlit/langchain.db
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Operating system files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local configuration
+*.env.local
+*.env.development.local
+*.env.test.local
+*.env.production.local
+
+# Model files (if downloaded locally)
+models/
+*.gguf
+*.bin
