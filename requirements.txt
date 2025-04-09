@@ -1,0 +1,7 @@
+Chainlit
+pandas
+langchain
+langchain-community
+faiss-cpu
+ipywidgets
+dotenv
