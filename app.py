@@ -1,101 +1,19 @@
 import os
-import pandas as pd
 import chainlit as cl
-from langchain_community.embeddings import OllamaEmbeddings
-from langchain_community.vectorstores import FAISS
-from langchain_community.llms import Ollama
-from langchain.prompts import PromptTemplate
 from langchain.chains import RetrievalQA
-from langchain.schema import Document
+from langchain.callbacks.base import BaseCallbackHandler
+
+# Import from modules
+from src.utils.data_loader import load_data
+from src.rag.vectorstore import get_vector_store
+from src.rag.prompts import PROMPT
+from src.models.llm import LLMManager
 
 # Configuration
-VECTOR_STORE_PATH = "vectors/pubmed_vectors"
 CSV_PATH = "data/cleaned_pubmed_papers.csv"
-
-# Prompt template
-PROMPT_TEMPLATE = """
-당신은 정신의학 전문가입니다. 제공된 PubMed 논문 내용을 참고하여 질문에 답변해 주세요.
-
-질문: {question}
-
-참고할 논문 내용:
-{context}
-
-답변은 다음 형식으로 작성해주세요:
-1. 답변 내용을 명확하게 설명
-2. 참고한 논문 정보 언급 (제목, 저널)
-3. 정보가 불충분한 경우 정직하게 인정
-"""
-
-# Load CSV data
-def load_data(csv_path):
-    df = pd.read_csv(csv_path)
-    cl.logger.info(f"CSV 파일에서 {len(df)}개의 논문 로드됨")
-    return df
-
-# Get or create vector store
-def get_vector_store(df):
-    # Check if vector store already exists
-    if os.path.exists(VECTOR_STORE_PATH) and os.path.isdir(VECTOR_STORE_PATH):
-        try:
-            # Initialize embeddings
-            embeddings = OllamaEmbeddings(
-                model="bge-m3",
-                base_url="http://localhost:11434"
-            )
-            
-            # Load existing vector store
-            vector_store = FAISS.load_local(VECTOR_STORE_PATH, embeddings, allow_dangerous_deserialization=True)
-            
-            # Check document count
-            doc_count = len(vector_store.index_to_docstore_id)
-            cl.logger.info(f"기존 벡터 저장소에서 {doc_count}개 문서 발견")
-            
-            if doc_count == len(df):
-                cl.logger.info("벡터 저장소가 최신 상태입니다. 기존 벡터 저장소를 사용합니다.")
-                return vector_store
-            else:
-                cl.logger.info(f"벡터 저장소({doc_count}개)와 CSV({len(df)}개)의 문서 수가 다릅니다.")
-                cl.logger.info("벡터 저장소를 새로 생성합니다.")
-        except Exception as e:
-            cl.logger.error(f"벡터 저장소 로드 중 오류 발생: {e}")
-            cl.logger.info("벡터 저장소를 새로 생성합니다.")
-    else:
-        cl.logger.info("벡터 저장소가 존재하지 않습니다. 새로 생성합니다.")
-    
-    # Create new vector store
-    cl.logger.info("문서를 처리하여 벡터 저장소 생성 중...")
-    
-    # Create document objects
-    documents = []
-    for i, row in df.iterrows():
-        content = f"Title: {row['title']}\n\nAbstract: {row['abstract']}"
-        doc = Document(
-            page_content=content,
-            metadata={
-                "paper_id": row["paper_id"],
-                "paper_number": row["paper_number"],
-                "journal": row["journal"],
-                "title": row["title"]
-            }
-        )
-        documents.append(doc)
-    
-    # Initialize embeddings
-    embeddings = OllamaEmbeddings(
-        model="bge-m3",
-        base_url="http://localhost:11434"
-    )
-    
-    # Create vector store
-    vector_store = FAISS.from_documents(documents, embeddings)
-    
-    # Save vector store
-    os.makedirs(os.path.dirname(VECTOR_STORE_PATH), exist_ok=True)
-    vector_store.save_local(VECTOR_STORE_PATH)
-    cl.logger.info(f"{len(documents)}개 문서의 벡터 저장소가 '{VECTOR_STORE_PATH}'에 저장되었습니다.")
-    
-    return vector_store
+VECTOR_STORE_PATH = "vectors/pubmed_vectors"
+LLM_MODEL = "gemma3:4b"
+OLLAMA_BASE_URL = "http://localhost:11434"
 
 @cl.on_chat_start
 async def on_chat_start():
@@ -107,6 +25,7 @@ async def on_chat_start():
     # Load data
     try:
         df = load_data(CSV_PATH)
+        cl.logger.info(f"CSV 파일에서 {len(df)}개의 논문 로드됨")
     except Exception as e:
         await cl.Message(content=f"CSV 데이터 로드 실패: {str(e)}").send()
         return
@@ -114,6 +33,8 @@ async def on_chat_start():
     # Set up vector store
     with cl.Step("벡터 저장소 준비 중...") as step:
         try:
+            # Set vector_store path in the environment
+            os.environ["VECTOR_STORE_PATH"] = VECTOR_STORE_PATH
             vector_store = get_vector_store(df)
             step.output = f"벡터 저장소 준비 완료 (문서 {len(vector_store.index_to_docstore_id)}개)"
         except Exception as e:
@@ -124,34 +45,31 @@ async def on_chat_start():
     # Initialize LLM
     with cl.Step("AI 모델 초기화 중...") as step:
         try:
-            llm = Ollama(
-                model="gemma3:4b",
-                base_url="http://localhost:11434",
-                temperature=0.1
+            llm_manager = LLMManager(
+                model_name=LLM_MODEL,
+                base_url=OLLAMA_BASE_URL,
+                streaming=True
             )
+            llm = llm_manager.llm
             step.output = "AI 모델 초기화 완료"
         except Exception as e:
             step.output = f"AI 모델 초기화 실패: {str(e)}"
             await cl.Message(content="AI 모델 초기화 중 오류가 발생했습니다.").send()
             return
     
-    # Create prompt template
-    prompt = PromptTemplate(
-        template=PROMPT_TEMPLATE,
-        input_variables=["context", "question"]
-    )
-    
     # Create retrieval chain
     qa_chain = RetrievalQA.from_chain_type(
         llm=llm,
         chain_type="stuff",
-        retriever=vector_store.as_retriever(search_kwargs={"k": 5}),
+        retriever=vector_store.as_retriever(search_kwargs={"k": 3}),
         return_source_documents=True,
-        chain_type_kwargs={"prompt": prompt}
+        chain_type_kwargs={"prompt": PROMPT}
     )
     
     # Store chain in user session
     cl.user_session.set("qa_chain", qa_chain)
+    cl.user_session.set("retriever", vector_store.as_retriever(search_kwargs={"k": 3}))
+    cl.user_session.set("llm_manager", llm_manager)
     
     await cl.Message(content="준비 완료! 질문을 입력해주세요.").send()
 
@@ -160,28 +78,59 @@ async def on_message(message: cl.Message):
     # Get question from user message
     question = message.content
     
-    # Get chain from user session
+    # Get resources from user session
     qa_chain = cl.user_session.get("qa_chain")
-    if not qa_chain:
+    retriever = cl.user_session.get("retriever")
+    llm_manager = cl.user_session.get("llm_manager")
+    
+    if not qa_chain or not retriever or not llm_manager:
         await cl.Message(content="세션이 만료되었습니다. 새로고침 후 다시 시도해주세요.").send()
         return
     
-    # Show thinking message
-    thinking_msg = cl.Message(content="생각 중...")
-    await thinking_msg.send()
+    # Retrieve relevant documents
+    with cl.Step("관련 논문 검색 중...") as step:
+        try:
+            docs = retriever.get_relevant_documents(question)
+            step.output = f"{len(docs)}개의 관련 논문을 찾았습니다."
+        except Exception as e:
+            step.output = f"논문 검색 실패: {str(e)}"
+            await cl.Message(content="논문 검색 중 오류가 발생했습니다.").send()
+            return
     
-    # Process query
+    # Create a streaming message
+    msg = cl.Message(content="")
+    await msg.send()
+    
     try:
-        with cl.Step("논문 검색 및 응답 생성 중...") as step:
-            response = qa_chain({"query": question})
+        # Custom streaming callback handler
+        class ChainlitStreamingHandler(BaseCallbackHandler):
+            def on_llm_new_token(self, token: str, **kwargs):
+                cl.run_sync(msg.stream_token(token))
+        
+        # First approach: Get context from documents for direct LLM response
+        context = "\n\n".join([doc.page_content for doc in docs])
+        
+        with cl.Step("응답 생성 중...") as step:
+            # Use direct LLM call with streaming instead of chain
+            # This ensures we see the tokens as they're generated
+            response = await qa_chain.ainvoke(
+                {"query": question},
+                {"callbacks": [ChainlitStreamingHandler()]}
+            )
+            
+            # If streaming didn't work, at least show the final result
+            if not msg.content:
+                await msg.update(content=response["result"])
+            
             step.output = "응답 생성 완료"
     except Exception as e:
-        # Handle error - instead of updating, send a new message
         await cl.Message(content=f"오류가 발생했습니다: {str(e)}").send()
+        await msg.update(content="응답 생성 중 오류가 발생했습니다.")
         return
     
-    # Instead of updating, send a new message with the result
-    await cl.Message(content=response["result"]).send()
+    # Update message if it's still empty
+    if not msg.content:
+        await msg.update(content="응답 생성이 완료되었지만 내용이 표시되지 않습니다. 다시 시도해주세요.")
     
     # Display source documents
     sources_text = "### 참고 논문\n\n"

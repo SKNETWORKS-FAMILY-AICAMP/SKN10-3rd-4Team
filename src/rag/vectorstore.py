@@ -1,41 +1,30 @@
-# File: /pubmed-rag-chainlit/pubmed-rag-chainlit/src/rag/vectorstore.py
-
 import os
 import pandas as pd
 from langchain_community.embeddings import OllamaEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain.schema import Document
-
-VECTOR_STORE_PATH = "pubmed_vectors"
-CSV_PATH = "cleaned_pubmed_papers.csv"
+from src.utils.data_loader import prepare_documents
 
 def get_vector_store(df):
-    if os.path.exists(VECTOR_STORE_PATH) and os.path.isdir(VECTOR_STORE_PATH):
+    # Get the path from environment variable or use default
+    vector_store_path = os.environ.get("VECTOR_STORE_PATH", "pubmed_vectors")
+    
+    if os.path.exists(vector_store_path) and os.path.isdir(vector_store_path):
         try:
             embeddings = OllamaEmbeddings(
                 model="bge-m3",
                 base_url="http://localhost:11434"
             )
-            vector_store = FAISS.load_local(VECTOR_STORE_PATH, embeddings, allow_dangerous_deserialization=True)
+            vector_store = FAISS.load_local(vector_store_path, embeddings, allow_dangerous_deserialization=True)
             doc_count = len(vector_store.index_to_docstore_id)
             if doc_count == len(df):
                 return vector_store
-        except Exception:
+        except Exception as e:
+            print(f"Error loading vector store: {e}")
             pass
 
-    documents = []
-    for i, row in df.iterrows():
-        content = f"Title: {row['title']}\n\nAbstract: {row['abstract']}"
-        doc = Document(
-            page_content=content,
-            metadata={
-                "paper_id": row["paper_id"],
-                "paper_number": row["paper_number"],
-                "journal": row["journal"],
-                "title": row["title"]
-            }
-        )
-        documents.append(doc)
+    # Create documents from DataFrame
+    documents = prepare_documents(df)
 
     embeddings = OllamaEmbeddings(
         model="bge-m3",
@@ -43,6 +32,9 @@ def get_vector_store(df):
     )
     
     vector_store = FAISS.from_documents(documents, embeddings)
-    vector_store.save_local(VECTOR_STORE_PATH)
+    
+    # Create directory if it doesn't exist
+    os.makedirs(os.path.dirname(vector_store_path), exist_ok=True)
+    vector_store.save_local(vector_store_path)
     
     return vector_store
