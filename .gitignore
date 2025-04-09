@@ -66,6 +66,6 @@ yarn-error.log*
 *.env.production.local
 
 # Model files (if downloaded locally)
-models/
+
 *.gguf
 *.bin
