@@ -27,8 +27,7 @@ ENV/
 .env
 
 # Vector Store (can be regenerated)
-vectors/
-faiss_index/
+
 
 # Data files (if they're large and can be downloaded or generated)
 # Uncomment if you want to exclude data files
