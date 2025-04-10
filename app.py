@@ -12,7 +12,7 @@ from src.models.llm import LLMManager
 # Configuration
 CSV_PATH = "data/cleaned_pubmed_papers.csv"
 VECTOR_STORE_PATH = "vectors/pubmed_vectors"
-LLM_MODEL = "gemma3:4b"
+LLM_MODEL = "gemma3-q8"
 OLLAMA_BASE_URL = "http://localhost:11434"
 
 @cl.on_chat_start
