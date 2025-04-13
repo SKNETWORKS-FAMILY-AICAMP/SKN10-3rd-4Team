@@ -25,8 +25,8 @@
 - 정확하고 신뢰할 수 있는 정보 제공은 우울증 인식 개선과 예방에 중요한 역할을 합니다.
 <br>
 
-<img src="images/depression-stats.png" alt="우울증 통계" width="300" height="300"/>
-<img src="images/depression_ver2.png" alt="우울증 통계" width="300" height="300"/>
+<img src="images/depression-stats.png" alt="우울증 통계" width="600" height="300"/>
+<img src="images/depression_ver2.png" alt="우울증 통계" width="600" height="300"/>
 
 
 **출처**  
@@ -52,6 +52,8 @@
 - 개발 언어: ![Python](https://img.shields.io/badge/-Python-3776AB?logo=python&logoColor=white)
 - 개발 환경: ![Cursor](https://img.shields.io/badge/-Cursor-1A1A1A?logo=cursor&logoColor=white)  ![Colab](https://img.shields.io/badge/-Google%20Colab-F9AB00?logo=googlecolab&logoColor=white)  ![RunPod](https://img.shields.io/badge/-RunPod-5F43DC?logo=cloud&logoColor=white)
 - 협업 툴 : ![GitHub](https://img.shields.io/badge/-GitHub-181717?logo=github&logoColor=white)  ![Discord](https://img.shields.io/badge/-Discord-5865F2?logo=discord&logoColor=white)
+- UI : ![Chainlit](https://img.shields.io/badge/-Chainlit-4385F5?logo=lightning&logoColor=white)
+
 
 ## 4. Chatbot 흐름도
 <img src="images/chatbot_Flowchart.png" alt="우울증 통계" width="600" height="300"/>
