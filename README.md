@@ -23,11 +23,11 @@
 
 - 우울증 환자의 수와 진료비는 매년 증가하고 있으며, 특히 20대에서 급증하는 추세입니다.  
 - 정확하고 신뢰할 수 있는 정보 제공은 우울증 인식 개선과 예방에 중요한 역할을 합니다.
-
-<img src="images/depression-stats.png" alt="우울증 통계" width="400" height="300"/>
-<img src="images/depression_ver2.png" alt="우울증 통계" width="400" height="300"/>
-
 <br>
+
+<img src="images/depression-stats.png" alt="우울증 통계" width="300" height="300"/>
+<img src="images/depression_ver2.png" alt="우울증 통계" width="300" height="300"/>
+
 
 **출처**  
 - [[그래픽] 우울증 환자 수·진료비 추이](https://www.yna.co.kr/view/GYH20240110000200044)
@@ -53,3 +53,18 @@
 - 개발 환경: ![Cursor](https://img.shields.io/badge/-Cursor-1A1A1A?logo=cursor&logoColor=white)  ![Colab](https://img.shields.io/badge/-Google%20Colab-F9AB00?logo=googlecolab&logoColor=white)  ![RunPod](https://img.shields.io/badge/-RunPod-5F43DC?logo=cloud&logoColor=white)
 - 협업 툴 : ![GitHub](https://img.shields.io/badge/-GitHub-181717?logo=github&logoColor=white)  ![Discord](https://img.shields.io/badge/-Discord-5865F2?logo=discord&logoColor=white)
 
+## 4. Chatbot 흐름도
+<img src="images/chatbot_Flowchart.png" alt="우울증 통계" width="600" height="300"/>
+
+<br>
+
+## 5. 데이터 소스
+### 🎥 유튜브
+-  [명쾌한 최원장](https://www.youtube.com/@clearheal)
+-  [14F 일사에프](https://www.youtube.com/@14FMBC)
+-  [정신과의사 뇌부자들](https://www.youtube.com/@brainrich6)
+-  [쿠크닥스 : 멘탈 바사삭 클리닉](https://www.youtube.com/@%EB%A9%98%ED%83%88%EB%B0%94%EC%82%AC%EC%82%AD%ED%81%B4%EB%A6%AC%EB%8B%89/featured)
+-  [최명기의 마음 편한 TV](https://www.youtube.com/@%EC%B5%9C%EB%AA%85%EA%B8%B0%EC%9D%98%EB%A7%88%EC%9D%8C%ED%8E%B8%ED%95%9CTV)
+<br>
+
+### 📄 논문 데이터
