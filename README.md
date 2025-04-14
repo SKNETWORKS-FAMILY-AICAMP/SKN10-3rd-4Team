@@ -28,7 +28,7 @@
 <img src="images/depression-stats.png" alt="우울증 통계" width="600" height="300"/>
 <img src="images/depression_ver2.png" alt="우울증 통계" width="600" height="300"/>
 
-
+<br><br>
 **출처**  
 - [[그래픽] 우울증 환자 수·진료비 추이](https://www.yna.co.kr/view/GYH20240110000200044)
 - [우울증 환자 5명 중 1명은 ‘20대’...타 연령대 압도](https://www.edaily.co.kr/News/Read?newsId=02046726632365000&mediaCodeNo=257)
@@ -55,7 +55,7 @@
 - UI : ![Chainlit](https://img.shields.io/badge/-Chainlit-4385F5?logo=lightning&logoColor=white)
 
 
-## 4. Chatbot 흐름도
+## 4. 시스템 아키텍쳐
 <img src="images/chatbot_Flowchart.png" alt="우울증 통계" width="600" height="300"/>
 
 <br>
@@ -70,3 +70,4 @@
 <br>
 
 ### 📄 논문 데이터
+-  [PubMed](https://pubmed.ncbi.nlm.nih.gov/)
