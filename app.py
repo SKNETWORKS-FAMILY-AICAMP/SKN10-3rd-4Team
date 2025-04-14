@@ -40,18 +40,32 @@ async def on_chat_start():
         await cl.Message(content=f"CSV 데이터 로드 실패: {str(e)}").send()
         return
     
-    # Set up vector store
+    # Set up vector stores
     with cl.Step("벡터 저장소 준비 중...") as step:
         try:
             # Set vector_store path in the environment
             os.environ["VECTOR_STORE_PATH"] = VECTOR_STORE_PATH
+            
+            # 논문 벡터 저장소 로드
             vector_store = get_vector_store(df)
-            step.output = f"벡터 저장소 준비 완료 (문서 {len(vector_store.index_to_docstore_id)}개)"
+            cl.logger.info(f"논문 벡터 저장소 준비 완료 (문서 {len(vector_store.index_to_docstore_id)}개)")
+            
+            # 유튜브 벡터 저장소 로드
+            youtube_vector_path = "vectors/youtube_vectors"
+            if os.path.exists(youtube_vector_path):
+                from src.utils.youtube_embeddings import YoutubeEmbeddings
+                youtube_embeddings = YoutubeEmbeddings()
+                youtube_vector_store = youtube_embeddings.load_embeddings(youtube_vector_path)
+                cl.logger.info(f"유튜브 벡터 저장소 준비 완료")
+            else:
+                cl.logger.warning("유튜브 벡터 저장소를 찾을 수 없습니다.")
+                youtube_vector_store = None
+                
+            step.output = f"벡터 저장소 준비 완료 (논문: {len(vector_store.index_to_docstore_id)}개, 유튜브: {'사용 가능' if youtube_vector_store else '없음'})"
         except Exception as e:
             step.output = f"벡터 저장소 준비 실패: {str(e)}"
             await cl.Message(content="벡터 저장소 초기화 중 오류가 발생했습니다.").send()
             return
-    
     # Initialize LLM
     with cl.Step("AI 모델 초기화 중...") as step:
         try:
