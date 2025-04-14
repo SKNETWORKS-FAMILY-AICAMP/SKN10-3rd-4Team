@@ -56,7 +56,7 @@
 - Vector DB : [![FAISS](https://img.shields.io/badge/-FAISS-009688?logo=ApacheSpark&logoColor=white)](https://github.com/facebookresearch/faiss)
 
 ## 4. 📂 프로젝트 구조
-'''
+```
 ├── app.py                  # Chainlit 애플리케이션 진입점
 ├── src                     # 소스 코드
 │   ├── rag                 # RAG 모듈
@@ -86,7 +86,7 @@
 ├── requirements.txt        # 프로젝트 의존성
 ├── config.json             # 설정
 └── README.md               # 프로젝트 문서
-'''
+```
 
 ## 5. 시스템 아키텍쳐
 <img src="images/FlowChart.png" alt="우울증 통계" width="600" height="300"/>
