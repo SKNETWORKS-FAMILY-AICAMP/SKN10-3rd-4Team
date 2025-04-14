@@ -3,6 +3,8 @@ from typing import Literal, Dict, List, Any
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain.schema.runnable.config import RunnableConfig
 from langgraph.graph import StateGraph, START, END
+from src.utils.youtube_embeddings import YoutubeEmbeddings
+from pathlib import Path
 
 class WorkflowManager:
     """
@@ -20,6 +22,10 @@ class WorkflowManager:
         self.vector_store = vector_store
         self.graph = self._create_workflow()
         self.current_config = None  # 현재 실행 중인 config를 저장하기 위한 변수
+        
+        # 벡터 저장소 경로 설정
+        self.project_root = Path(__file__).parent.parent.parent
+        self.youtube_vector_path = str(self.project_root / "vectors" / "youtube_vectors")
     
     def _create_workflow(self):
         """워크플로우 생성"""
@@ -49,13 +55,14 @@ class WorkflowManager:
                 return {"messages": state["messages"], "question_type": "academic", "run_id": state.get("run_id")}
                 
         # 조건부 라우팅
-        def route_by_type(state: State) -> str:
-            """질문 유형에 따라 다음 노드 결정"""
+        def route_by_type(state: State) -> Literal["academic_path", "counseling_path"]:
+            """질문 유형에 따라 다음 경로 결정"""
             question_type = state.get("question_type", "academic")
+            print(f"라우팅 - 질문 유형: {question_type}")
             if question_type == "counseling":
-                return "generate_counseling"
+                return "counseling_path"
             else:
-                return "retrieve"
+                return "academic_path"
         
         # 문서 검색 노드
         def retrieve_documents(state: State) -> State:
@@ -75,6 +82,44 @@ class WorkflowManager:
                 return {
                     "messages": state["messages"], 
                     "documents": [], 
+                    "question_type": state.get("question_type"),
+                    "run_id": state.get("run_id")
+                }
+        
+        # 유튜브 문서 검색 노드
+        def retrieve_youtube_documents(state: State) -> State:
+            """유튜브 관련 문서 검색"""
+            question = state["messages"][-1].content
+            try:
+                print("유튜브 벡터 저장소 로드 시도...")
+                # 유튜브 벡터 저장소에서 관련 컨텍스트 검색
+                youtube_embeddings = YoutubeEmbeddings()  # BGE-Large-EN 사용
+                vector_store_path = workflow_manager.youtube_vector_path
+                print(f"벡터 저장소 경로: {vector_store_path}")
+                
+                # 벡터 저장소 로드
+                vector_store = youtube_embeddings.load_embeddings(vector_store_path)
+                print("벡터 저장소 로드 성공")
+                
+                # 벡터 저장소를 인스턴스 변수로 저장
+                youtube_embeddings.vector_store = vector_store
+                
+                # 유사도 검색 수행
+                results = youtube_embeddings.similarity_search(question, k=2)
+                print(f"상담 관련 {len(results)}개의 유튜브 컨텍스트를 검색했습니다.")
+                
+                return {
+                    "messages": state["messages"], 
+                    "documents": results,
+                    "question_type": state.get("question_type"),
+                    "run_id": state.get("run_id")
+                }
+            except Exception as e:
+                print(f"유튜브 문서 검색 중 오류 발생: {str(e)}")
+                # 오류 발생 시에도 워크플로우 계속 진행
+                return {
+                    "messages": state["messages"], 
+                    "documents": [],
                     "question_type": state.get("question_type"),
                     "run_id": state.get("run_id")
                 }
@@ -119,20 +164,28 @@ class WorkflowManager:
         def generate_counseling_response(state: State) -> State:
             """상담 질문에 대한 응답 생성"""
             question = state["messages"][-1].content
+            documents = state.get("documents", [])
             
             try:
-                # 스트리밍 콜백 확인 및 전달 (워크플로우 매니저에서 config 가져오기)
+                # 컨텍스트 구성
+                context = "\n\n".join([doc.page_content for doc in documents]) if documents else ""
+                
+                # 스트리밍 콜백 확인 및 전달
                 callbacks = None
                 if workflow_manager.current_config and "callbacks" in workflow_manager.current_config:
                     callbacks = workflow_manager.current_config.get("callbacks")
                     print(f"상담 응답 생성에 콜백 전달: {callbacks}")
                 
-                # 상담 응답 생성 (문서 검색 없이)
-                response = workflow_manager.llm_manager.generate_counseling_response(question, callbacks=callbacks)
+                # 상담 응답 생성 (유튜브 컨텍스트 포함)
+                response = workflow_manager.llm_manager.generate_counseling_response(
+                    question, 
+                    context=context if context else None,
+                    callbacks=callbacks
+                )
                 
                 return {
                     "messages": state["messages"] + [AIMessage(content=response, tags=["final"])], 
-                    "documents": [],  # 상담 응답은 문서를 참조하지 않음
+                    "documents": documents,
                     "question_type": state.get("question_type"),
                     "run_id": state.get("run_id")
                 }
@@ -152,21 +205,26 @@ class WorkflowManager:
         # 노드 추가
         workflow.add_node("classify", classify_question)
         workflow.add_node("retrieve", retrieve_documents)
+        workflow.add_node("retrieve_youtube", retrieve_youtube_documents)
         workflow.add_node("generate_academic", generate_academic_response)
         workflow.add_node("generate_counseling", generate_counseling_response)
         
         # 엣지 추가
         workflow.add_edge(START, "classify")
-        # 조건부 엣지 추가 (라우터 함수 사용)
+        
+        # 학술 경로와 상담 경로 정의
         workflow.add_conditional_edges(
             "classify",
             route_by_type,
             {
-                "retrieve": "retrieve",
-                "generate_counseling": "generate_counseling"
+                "academic_path": "retrieve",
+                "counseling_path": "retrieve_youtube"
             }
         )
+        
+        # 각 경로의 나머지 엣지 추가
         workflow.add_edge("retrieve", "generate_academic")
+        workflow.add_edge("retrieve_youtube", "generate_counseling")
         workflow.add_edge("generate_academic", END)
         workflow.add_edge("generate_counseling", END)
         
@@ -249,60 +307,25 @@ class WorkflowManager:
                 
         # 초기 상태 설정
         initial_state = {
-            "messages": [HumanMessage(content=message)]
+            "messages": [HumanMessage(content=message)],
+            "run_id": run_id  # 초기 상태에 run_id 추가
         }
         
         last_state = None
         
         try:
-            # 1. 먼저 전체 실행을 통해 분류부터 실행
-            # (질문 분류를 위한 사전 단계로 실행하고 결과 캐시하기)
-            config_copy = config.copy()
-            config_copy["configurable"] = {"thread_id": message}  # 스레드 ID 정의하여 캐싱
+            # 스트리밍 모드로 실행
+            config["configurable"] = {"thread_id": message}  # 스레드 ID 정의하여 캐싱
             
             # LangSmith 추적에 필요한 name 및 run_type 추가
-            config_copy["name"] = "Depression-Chatbot-Workflow"
-            config_copy["tags"] = ["workflow_execution"]
-            
-            print("전체 워크플로우 실행 중...")
-            full_result = self.graph.invoke(
-                initial_state,
-                config=RunnableConfig(**config_copy)
-            )
-            
-            # 분류 결과와 문서 캐시
-            question_type = full_result.get("question_type", "academic")
-            documents = full_result.get("documents", [])
-            
-            # run_id가 있으면 활용
-            run_id_from_result = full_result.get("run_id")
-            if run_id_from_result:
-                run_id = run_id_from_result
-                print(f"워크플로우 결과에서 run_id 가져옴: {run_id}")
-            
-            print(f"전체 실행 후: 질문 유형: {question_type}, 문서 수: {len(documents)}")
-            
-            # 2. 스트리밍 모드로 다시 실행 (노드 진행 과정과 응답 생성 스트리밍 위해)
-            config["configurable"] = {"thread_id": message}  # 같은 스레드 ID로 캐시 활용
-            
-            # 동일한 run_id 사용, 스트리밍에 name 추가
-            config["name"] = "Depression-Chatbot-Stream"
-            config["tags"] = ["workflow_stream"]
-            
-            # 메타데이터에 단계 정보 추가
-            config["metadata"]["parent_run_id"] = run_id
+            config["name"] = "Depression-Chatbot-Workflow"
+            config["tags"] = ["workflow_execution"]
             
             # 각 단계를 같은 워크플로우의 일부로 식별하기 위한 메타데이터
             config["metadata"]["workflow_id"] = run_id
             
-            # 초기 상태에 run_id 포함
-            initial_state_with_run_id = {
-                "messages": [HumanMessage(content=message)],
-                "run_id": run_id
-            }
-            
             for output in self.graph.stream(
-                initial_state_with_run_id, 
+                initial_state, 
                 config=RunnableConfig(**config),
                 stream_mode="values"
             ):
@@ -314,13 +337,6 @@ class WorkflowManager:
                     
                     # 기존 상태값 유지
                     if last_state is None:
-                        # 첫 상태에 캐시된 값 확실히 추가
-                        state_delta["question_type"] = question_type
-                        
-                        # 문서가 있으면 추가
-                        if documents and "documents" not in state_delta:
-                            state_delta["documents"] = documents
-                            
                         last_state = state_delta
                     else:
                         # 이전 상태 정보 유지하면서 업데이트
@@ -328,22 +344,21 @@ class WorkflowManager:
                         for key, value in state_delta.items():
                             updated_state[key] = value
                             
-                        # 질문 유형 유지
-                        if "question_type" not in state_delta and question_type:
-                            updated_state["question_type"] = question_type
-                            
                         last_state = updated_state
                         
                     # langgraph_node 메타데이터 유추 
                     if "messages" in state_delta and len(state_delta["messages"]) > len(initial_state["messages"]):
                         # 새 메시지가 추가되었다면 응답 생성 노드
-                        if question_type == "counseling":
+                        if "question_type" in last_state and last_state["question_type"] == "counseling":
                             node_name = "generate_counseling"
                         else:
                             node_name = "generate_academic"
                     elif "documents" in state_delta and state_delta["documents"]:
                         # 문서가 추가되었다면 검색 노드
-                        node_name = "retrieve"
+                        if "question_type" in last_state and last_state["question_type"] == "counseling":
+                            node_name = "retrieve_youtube"
+                        else:
+                            node_name = "retrieve"
                     elif "question_type" in state_delta:
                         # 질문 유형이 추가되었다면 분류 노드
                         node_name = "classify"
@@ -366,23 +381,12 @@ class WorkflowManager:
                     
                     # 상태 업데이트
                     if last_state is None:
-                        # 첫 상태에 캐시된 값 확실히 추가
-                        state_delta["question_type"] = question_type
-                        
-                        # 문서가 있으면 추가
-                        if documents and "documents" not in state_delta:
-                            state_delta["documents"] = documents
-                            
                         last_state = state_delta
                     else:
                         # 이전 상태 정보 유지하면서 업데이트
                         updated_state = last_state.copy()
                         for key, value in state_delta.items():
                             updated_state[key] = value
-                            
-                        # 질문 유형 유지
-                        if "question_type" not in state_delta and question_type:
-                            updated_state["question_type"] = question_type
                             
                         last_state = updated_state
                         
@@ -403,9 +407,7 @@ class WorkflowManager:
                     print(f"알 수 없는 출력 형식: {type(output)}")
                     
                     if last_state is None:
-                        last_state = {"messages": initial_state["messages"], "question_type": question_type}
-                        if documents:
-                            last_state["documents"] = documents
+                        last_state = {"messages": initial_state["messages"]}
                     
                     # 메타데이터에 정보 추가
                     metadata = {
@@ -425,7 +427,7 @@ class WorkflowManager:
                     AIMessage(content=f"오류가 발생했습니다: {str(e)}", tags=["final"])
                 ],
                 "documents": [],
-                "question_type": question_type if 'question_type' in locals() else "academic"
+                "question_type": "academic"
             }
             
             # 에러 메타데이터

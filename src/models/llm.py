@@ -1,5 +1,9 @@
 import os
 from langchain_community.llms import Ollama
+from typing import List, Optional, Generator
+from langchain.callbacks.base import BaseCallbackHandler
+import time
+from src.utils.youtube_embeddings import YoutubeEmbeddings
 
 class LLMManager:
     def __init__(self, model_name, base_url, temperature=0.1, streaming=False):
@@ -74,18 +78,19 @@ class LLMManager:
             # 오류 발생 시 기본값으로 학술적 내용으로 분류
             return "academic"
 
-    def generate_counseling_response(self, question, callbacks=None):
+    def generate_counseling_response(self, question, context=None, callbacks=None):
         """
         상담 질문에 대한 응답을 생성합니다.
         
         Args:
             question (str): 사용자 질문
+            context (str, optional): 유튜브 컨텍스트
             callbacks: 콜백 핸들러
             
         Returns:
             str: 상담 응답
         """
-        prompt = self.create_counseling_prompt(question)
+        prompt = self.create_counseling_prompt(question, context)
         
         # Pass callbacks for streaming if provided
         if self.streaming and callbacks:
@@ -104,15 +109,19 @@ class LLMManager:
             response = self.llm(prompt)
             return response
 
-    def create_counseling_prompt(self, question):
+    def create_counseling_prompt(self, question, context=None):
         """
         상담 질문에 대한 프롬프트를 생성합니다.
+        
+        Args:
+            question (str): 사용자 질문
+            context (str, optional): 유튜브 컨텍스트
         """
         template = """
         당신은 우울증 상담 전문가입니다. 사용자의 우울한 감정과 고민에 공감하고 도움이 되는 조언을 제공해 주세요.
 
         사용자 메시지: {question}
-
+        {context_section}
         상담 지침:
         1. 사용자의 감정에 충분히 공감하세요
         2. 판단하지 말고 경청하는 태도를 보여주세요
@@ -120,11 +129,13 @@ class LLMManager:
         4. 필요하다면 전문적인 상담을 권유하세요
         5. 단, 의학적 진단이나 처방은 제공하지 마세요
         6. 자살/자해 관련 내용이 언급되면 즉시 전문가 상담을 권유하세요
+        7. 제공된 유튜브 컨텍스트가 있다면, 이를 참고하여 더 구체적이고 실질적인 조언을 제공하세요
 
         따뜻하고 공감적인 한국어로 응답해 주세요.
         """
 
-        return template.format(question=question)
+        context_section = f"\n\n참고할 유튜브 컨텍스트:\n{context}\n" if context else ""
+        return template.format(question=question, context_section=context_section)
 
     def create_prompt(self, question, context):
         template = """
@@ -152,3 +163,65 @@ class LLMManager:
         """
 
         return template.format(question=question, context=context)
+
+def create_counseling_prompt(question: str, context: str = None) -> str:
+    base_prompt = f"""당신은 전문 상담사입니다. 내담자의 질문에 대해 공감하고 이해하는 태도로 상담해주세요.
+상담 시에는 다음과 같은 원칙을 지켜주세요:
+1. 내담자의 감정에 공감하고 이해하는 모습을 보여주세요.
+2. 판단하거나 비난하지 않고, 수용적인 태도를 유지하세요.
+3. 구체적이고 실천 가능한 조언을 제시해주세요.
+4. 전문적이면서도 친근한 어조를 사용하세요.
+5. 내담자의 자존감을 높여주고 긍정적인 변화를 격려해주세요.
+
+내담자의 질문: {question}"""
+
+    if context:
+        base_prompt += f"\n\n참고할 만한 정보:\n{context}"
+    
+    return base_prompt
+
+def stream_counseling_response_tokens(
+    question: str,
+    callbacks: Optional[List[BaseCallbackHandler]] = None,
+    youtube_context: bool = True
+) -> Generator[str, None, None]:
+    """
+    상담 응답을 토큰 단위로 스트리밍합니다.
+    
+    Args:
+        question (str): 내담자의 질문
+        callbacks (Optional[List[BaseCallbackHandler]]): 콜백 핸들러 리스트
+        youtube_context (bool): 유튜브 컨텍스트 사용 여부
+        
+    Yields:
+        str: 응답 토큰
+    """
+    try:
+        context = ""
+        if youtube_context:
+            # 유튜브 벡터 저장소에서 관련 컨텍스트 검색
+            youtube_embeddings = YoutubeEmbeddings(model_name="bge-m3")
+            vector_store = youtube_embeddings.load_embeddings()
+            results = vector_store.similarity_search(question, k=2)
+            
+            # 컨텍스트 구성
+            context = "\n\n".join([doc.page_content for doc in results])
+        
+        # 프롬프트 생성
+        prompt = create_counseling_prompt(question, context)
+        
+        # Ollama 설정
+        llm = Ollama(
+            model="llama2",
+            callbacks=callbacks,
+            streaming=True
+        )
+        
+        # 응답 생성 및 스트리밍
+        for token in llm.stream(prompt):
+            time.sleep(0.02)  # 자연스러운 스트리밍을 위한 지연
+            yield token
+            
+    except Exception as e:
+        print(f"상담 응답 스트리밍 중 오류 발생: {str(e)}")
+        yield f"죄송합니다. 응답 생성 중 오류가 발생했습니다: {str(e)}"

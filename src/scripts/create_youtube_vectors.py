@@ -10,10 +10,10 @@ from src.utils.youtube_embeddings import YoutubeEmbeddings
 
 def main():
     # 경로 설정
-    csv_path = "data\cleaned_youtube_data\cleaned_youtube_text.csv"
+    csv_path = "data/cleaned_youtube_text.csv"
     vector_store_path = "vectors/youtube_vectors"
     
-    # 임베딩 객체 생성 (BGE-M3 사용)
+    # 임베딩 객체 생성
     youtube_embeddings = YoutubeEmbeddings(model_name="bge-m3")
     
     try:
@@ -22,16 +22,8 @@ def main():
         documents = youtube_embeddings.load_youtube_data(csv_path)
         print(f"총 {len(documents)}개의 문서가 생성되었습니다.")
         
-        # 기존 벡터 저장소 삭제
-        if os.path.exists(vector_store_path):
-            print(f"\n기존 벡터 저장소 삭제: {vector_store_path}")
-            for file in ['index.faiss', 'index.pkl']:
-                file_path = os.path.join(vector_store_path, file)
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-        
         # 벡터 저장소 생성
-        print("\n새로운 벡터 저장소를 생성합니다 (BGE-M3 사용)...")
+        print("\n벡터 저장소를 생성합니다...")
         vector_store = youtube_embeddings.create_embeddings(documents)
         
         # 벡터 저장소 저장
@@ -42,8 +34,7 @@ def main():
         # 테스트 쿼리 실행
         print("\n테스트 쿼리를 실행합니다...")
         loaded_store = youtube_embeddings.load_embeddings(vector_store_path)
-        youtube_embeddings.vector_store = loaded_store
-        results = youtube_embeddings.similarity_search("우울증의 주요 증상은 무엇인가요?", k=2)
+        results = loaded_store.similarity_search("우울증의 주요 증상은 무엇인가요?", k=2)
         
         print("\n검색 결과:")
         for doc in results:

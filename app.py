@@ -241,6 +241,31 @@ async def on_message(message: cl.Message):
             if workflow_run_id:
                 sources_msg.metadata = {"parent_run_id": workflow_run_id, "type": "sources"}
             await sources_msg.send()
+        
+        # 상담 질문에 대한 소스 문서 표시 추가
+        elif question_type == "counseling" and documents:
+            sources_text = "### 참고 자료\n\n"
+            
+            for i, doc in enumerate(documents):
+                title = doc.metadata.get("title", "제목 없음")
+                url = doc.metadata.get("video_url", "")
+                
+                # 내용 미리보기 (첫 100자 정도)
+                content_preview = doc.page_content[:100] + "..." if len(doc.page_content) > 100 else doc.page_content
+                
+                if url:
+                    sources_text += f"**{i+1}.** [{title}]({url}) - 유튜브 컨텐츠\n"
+                else:
+                    sources_text += f"**{i+1}.** {title} - 유튜브 컨텐츠\n"
+                
+                # 간략한 내용 표시
+                sources_text += f"```\n{content_preview}\n```\n\n"
+            
+            # 소스 정보 메시지 추가
+            await cl.Message(
+                content=sources_text,
+                author="시스템",
+            ).send()
     
     except Exception as e:
         cl.logger.error(f"워크플로우 실행 중 오류 발생: {str(e)}")
