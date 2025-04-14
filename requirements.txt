@@ -9,3 +9,10 @@ langgraph
 biopython
 requests
 beautifulsoup4
+langchain-openai
+transformers
+langfuse 
+langchain_anthropic 
+langchain_experimental
+langchain_core
+setuptools
