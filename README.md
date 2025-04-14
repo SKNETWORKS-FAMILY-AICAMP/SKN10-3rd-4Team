@@ -8,9 +8,9 @@
 
 | 김현수 | 남궁승원 | 조현정 | 황인호 |
 |:----------:|:----------:|:----------:|:----------:|
-| aa | bb | cc | dd |
-| 11 | 22 | 33 | 44 |
+| <img src="images/sad_hyunsoo.png" alt="image" width="250" height="250"/> | <img src="images/sad_seungwon.png" alt="image" width="250" height="250"/> |<img src="images/sad_hyunjung.png" alt="image" width="250" height="250"/>  | <img src="images/sad_inho.png" alt="image" width="250" height="250"/> |
 
+<br>
 </div>
 
 # 🤖💬 우울증 관련 정보 제공 챗봇 🤖💬
