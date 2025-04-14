@@ -5,3 +5,11 @@ langchain-community
 faiss-cpu
 ipywidgets
 dotenv
+langgraph
+langchain-openai
+transformers
+langfuse 
+langchain_anthropic 
+langchain_experimental
+langchain_core
+setuptools
