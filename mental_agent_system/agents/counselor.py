@@ -40,8 +40,9 @@ class CounselorAgent:
         
         # 프로젝트 루트 디렉토리 찾기
         project_root = Path(__file__).parent.parent.parent
-        vectorstore_path = project_root / "vectorstore" / "counselor_faiss_index"
-        
+        # vectorstore_path = project_root / "vectorstore" / "counselor_faiss_index"
+        vectorstore_path = project_root / "vectorstore" / "counselor_summary_faiss_index"
+
         # 기존 FAISS 인덱스 로드
         self.db = load_faiss_from_korean_path(vectorstore_path)
     
