@@ -21,7 +21,7 @@ OLLAMA_BASE_URL = "http://localhost:11434"
 async def on_chat_start():
     # Send initial message
     await cl.Message(
-        content="🔬 PubMed 논문 검색 챗봇에 오신 것을 환영합니다! 정신의학 관련 질문을 해주세요."
+        content="🔬 우울증 관련 챗봇에 오신 것을 환영합니다! 학술적 내용이나 상담 관련 질문을 해주세요."
     ).send()
     
     # Load data
@@ -89,43 +89,77 @@ async def on_message(message: cl.Message):
         await cl.Message(content="세션이 만료되었습니다. 새로고침 후 다시 시도해주세요.").send()
         return
     
-    # Retrieve relevant documents
-    with cl.Step("관련 논문 검색 중...") as step:
-        try:
-            docs = retriever.get_relevant_documents(question)
-            step.output = f"{len(docs)}개의 관련 논문을 찾았습니다."
-        except Exception as e:
-            step.output = f"논문 검색 실패: {str(e)}"
-            await cl.Message(content="논문 검색 중 오류가 발생했습니다.").send()
-            return
-    
     # Create a streaming message
     msg = cl.Message(content="")
     await msg.send()
     
+    # Custom streaming callback handler
+    class ChainlitStreamingHandler(BaseCallbackHandler):
+        def on_llm_new_token(self, token: str, **kwargs):
+            cl.run_sync(msg.stream_token(token))
+    
     try:
-        # Custom streaming callback handler
-        class ChainlitStreamingHandler(BaseCallbackHandler):
-            def on_llm_new_token(self, token: str, **kwargs):
-                cl.run_sync(msg.stream_token(token))
-        
-        # Get context from documents for direct LLM response
-        context = "\n\n".join([doc.page_content for doc in docs])
-        
-        with cl.Step("응답 생성 중...") as step:
-            # Use direct LLM call with streaming instead of chain
-            # This ensures we see the tokens as they're generated
-            response = await qa_chain.ainvoke(
-                {"query": question},
-                {"callbacks": [ChainlitStreamingHandler()]}
-            )
+        # 질문 분류
+        with cl.Step("질문 분류 중...") as step:
+            question_type = llm_manager.classify_question(question)
+            step.output = f"질문 유형: {'학술적 질문' if question_type == 'academic' else '상담 질문'}"
             
-            # If streaming didn't work, update the message with final result
-            if not msg.content:
-                msg.content = response["result"]
-                await msg.update()
+        # 상담 질문인 경우
+        if question_type == "counseling":
+            with cl.Step("상담 응답 생성 중...") as step:
+                # 상담 질문에 대한 응답 생성
+                response = llm_manager.generate_counseling_response(
+                    question, 
+                    callbacks=[ChainlitStreamingHandler()]
+                )
+                
+                # 스트리밍이 작동하지 않은 경우 메시지 업데이트
+                if not msg.content:
+                    msg.content = response
+                    await msg.update()
+                    
+                step.output = "상담 응답 생성 완료"
+        
+        # 학술적 질문인 경우 
+        else:
+            # Retrieve relevant documents
+            with cl.Step("관련 논문 검색 중...") as step:
+                try:
+                    docs = retriever.get_relevant_documents(question)
+                    step.output = f"{len(docs)}개의 관련 논문을 찾았습니다."
+                except Exception as e:
+                    step.output = f"논문 검색 실패: {str(e)}"
+                    await cl.Message(content="논문 검색 중 오류가 발생했습니다.").send()
+                    return
             
-            step.output = "응답 생성 완료"
+            # Get context from documents for direct LLM response
+            context = "\n\n".join([doc.page_content for doc in docs])
+            
+            with cl.Step("학술 응답 생성 중...") as step:
+                # Use direct LLM call with streaming instead of chain
+                # This ensures we see the tokens as they're generated
+                response = await qa_chain.ainvoke(
+                    {"query": question},
+                    {"callbacks": [ChainlitStreamingHandler()]}
+                )
+                
+                # If streaming didn't work, update the message with final result
+                if not msg.content:
+                    msg.content = response["result"]
+                    await msg.update()
+                
+                step.output = "학술 응답 생성 완료"
+                
+                # Display source documents for academic questions
+                sources_text = "### 참고 논문\n\n"
+                for i, doc in enumerate(response["source_documents"]):
+                    sources_text += f"**{i+1}.** 논문 ID: {doc.metadata.get('paper_id', 'N/A')}\n"
+                    sources_text += f"   제목: {doc.metadata.get('title', 'N/A')}\n"
+                    sources_text += f"   저널: {doc.metadata.get('journal', 'N/A')}\n\n"
+                
+                # Send sources as a new message
+                await cl.Message(content=sources_text).send()
+    
     except Exception as e:
         await cl.Message(content=f"오류가 발생했습니다: {str(e)}").send()
         msg.content = "응답 생성 중 오류가 발생했습니다."
@@ -136,13 +170,3 @@ async def on_message(message: cl.Message):
     if not msg.content:
         msg.content = "응답 생성이 완료되었지만 내용이 표시되지 않습니다. 다시 시도해주세요."
         await msg.update()
-    
-    # Display source documents
-    sources_text = "### 참고 논문\n\n"
-    for i, doc in enumerate(response["source_documents"]):
-        sources_text += f"**{i+1}.** 논문 ID: {doc.metadata.get('paper_id', 'N/A')}\n"
-        sources_text += f"   제목: {doc.metadata.get('title', 'N/A')}\n"
-        sources_text += f"   저널: {doc.metadata.get('journal', 'N/A')}\n\n"
-    
-    # Send sources as a new message
-    await cl.Message(content=sources_text).send()

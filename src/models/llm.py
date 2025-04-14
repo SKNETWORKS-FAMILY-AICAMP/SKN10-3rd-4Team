@@ -28,6 +28,86 @@ class LLMManager:
             response = self.llm(prompt)
             return response
 
+    def classify_question(self, question):
+        """
+        질문을 학술적인 내용인지 상담 내용인지 분류합니다.
+        
+        Args:
+            question (str): 사용자 질문
+            
+        Returns:
+            str: "academic" 또는 "counseling"
+        """
+        prompt = """
+        다음 질문이 우울증에 대한 학술적/연구적 내용을 묻는 것인지, 
+        아니면 우울증 관련 상담이나 개인적인 조언을 구하는 것인지 판단해주세요.
+        
+        질문: {question}
+        
+        분류 기준:
+        - '학술적(academic)': 우울증의 원인, 증상, 치료법, 통계, 연구 결과, 약물, 치료법 등 객관적 정보를 요청하는 경우
+        - '상담(counseling)': 개인적인 우울함, 감정적 어려움, 심리적 조언, 대처 방법 등을 구하는 경우
+        
+        다음 중 하나로만 응답해 주세요: 'academic' 또는 'counseling'
+        """.format(question=question)
+        
+        try:
+            response = self.llm(prompt)
+            result = response.strip().lower()
+            
+            # 응답에 academic이 포함되어 있으면 academic으로, 아니면 counseling으로 간주
+            if "academic" in result:
+                return "academic"
+            else:
+                return "counseling"
+        except Exception as e:
+            print(f"질문 분류 중 오류 발생: {str(e)}")
+            # 오류 발생 시 기본값으로 학술적 내용으로 분류
+            return "academic"
+
+    def generate_counseling_response(self, question, callbacks=None):
+        """
+        상담 질문에 대한 응답을 생성합니다.
+        
+        Args:
+            question (str): 사용자 질문
+            callbacks: 콜백 핸들러
+            
+        Returns:
+            str: 상담 응답
+        """
+        prompt = self.create_counseling_prompt(question)
+        
+        # Pass callbacks for streaming if provided
+        if self.streaming and callbacks:
+            response = self.llm.generate([prompt], callbacks=callbacks)
+            return response.generations[0][0].text
+        else:
+            response = self.llm(prompt)
+            return response
+
+    def create_counseling_prompt(self, question):
+        """
+        상담 질문에 대한 프롬프트를 생성합니다.
+        """
+        template = """
+        당신은 우울증 상담 전문가입니다. 사용자의 우울한 감정과 고민에 공감하고 도움이 되는 조언을 제공해 주세요.
+
+        사용자 메시지: {question}
+
+        상담 지침:
+        1. 사용자의 감정에 충분히 공감하세요
+        2. 판단하지 말고 경청하는 태도를 보여주세요
+        3. 구체적이고 실행 가능한 조언을 제공하세요
+        4. 필요하다면 전문적인 상담을 권유하세요
+        5. 단, 의학적 진단이나 처방은 제공하지 마세요
+        6. 자살/자해 관련 내용이 언급되면 즉시 전문가 상담을 권유하세요
+
+        따뜻하고 공감적인 한국어로 응답해 주세요.
+        """
+
+        return template.format(question=question)
+
     def create_prompt(self, question, context):
         template = """
         당신은 정신의학 전문가입니다. 제공된 PubMed 논문들 중에서 질문과 가장 관련성이 높은 논문들만 선별하여 답변해 주세요.
