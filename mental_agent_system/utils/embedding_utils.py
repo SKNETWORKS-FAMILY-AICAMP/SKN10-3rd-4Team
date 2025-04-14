@@ -31,14 +31,20 @@ class DataEmbedder:
             chunk_overlap=200,
             length_function=len,
         )
-
     def _create_documents_from_youtube_data(self, df: pd.DataFrame) -> List[Document]:
         """유튜브 데이터를 Document 형식으로 변환"""
         documents = []
         for _, row in df.iterrows():
             try:
-                text = f"제목: {row['title']}\n내용: {row['caption']}"
-                metadata = {"source": row['video_url'], "title": row['title']}
+                # text 컬럼이 있는 경우 (요약 데이터)
+                if 'summary' in df.columns:
+                    text = row['summary']
+                    metadata = {"source": row['video_url'], "title": row['title']}
+                # caption이 있는 경우 (원본 데이터)
+                else:
+                    text = f"제목: {row['title']}\n내용: {row['caption']}"
+                    metadata = {"source": row['video_url'], "title": row['title']}
+                
                 documents.append(Document(page_content=text, metadata=metadata))
             except KeyError as e:
                 print(f"경고: 누락된 컬럼 - {e}")
@@ -131,4 +137,30 @@ class DataEmbedder:
             print(f"임베딩 완료: {len(splits)}개의 문서 청크가 {save_path}에 저장되었습니다.")
         except Exception as e:
             print(f"PubMed 데이터 처리 중 오류 발생: {e}")
+            raise 
+
+    def embed_single_youtube_file(self, file_path: str, save_path: str):
+        """
+        단일 유튜브 데이터 CSV 파일을 임베딩하고 FAISS 인덱스로 저장
+        Args:
+            file_path: 정제된 유튜브 데이터 CSV 파일 경로
+            save_path: FAISS 인덱스를 저장할 경로
+        """
+        try:
+            print(f"\n처리 중인 파일: {file_path}")
+            df = pd.read_csv(file_path)
+            documents = self._create_documents_from_youtube_data(df)
+            
+            if not documents:
+                raise ValueError("처리할 수 있는 문서가 없습니다.")
+
+            # 텍스트 분할
+            splits = self.text_splitter.split_documents(documents)
+            
+            # FAISS 인덱스 생성 및 저장
+            vectorstore = FAISS.from_documents(splits, self.embeddings)
+            self._save_faiss_index(vectorstore, save_path)
+            print(f"임베딩 완료: {len(splits)}개의 문서 청크가 {save_path}에 저장되었습니다.")
+        except Exception as e:
+            print(f"파일 처리 중 오류 발생: {e}")
             raise 
