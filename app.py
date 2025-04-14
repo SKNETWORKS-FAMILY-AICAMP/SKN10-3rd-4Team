@@ -4,11 +4,22 @@ from langchain.callbacks.base import BaseCallbackHandler
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain.globals import set_verbose
 from langchain.callbacks.tracers.langchain import wait_for_all_tracers
+from dotenv import load_dotenv
+
+# 환경 변수 로드
+load_dotenv()
 
 # LangSmith 설정 확인 및 활성화
 if os.environ.get("LANGCHAIN_TRACING_V2") == "true":
     print("LangSmith 추적이 활성화되어 있습니다.")
     set_verbose(True)  # 자세한 로깅 활성화
+
+# Tavily API 키 확인
+tavily_api_key = os.environ.get("TAVILY_API_KEY")
+if tavily_api_key:
+    print("Tavily API 키가 설정되었습니다.")
+else:
+    print("경고: Tavily API 키가 설정되지 않았습니다. 웹 검색 기능이 작동하지 않을 수 있습니다.")
 
 # Import from modules
 from src.utils.data_loader import load_data
@@ -244,42 +255,114 @@ async def on_message(message: cl.Message):
         
         # 학술 질문에 대해서만 소스 문서 표시
         if question_type == "academic" and documents:
-            sources_text = "### 참고 논문\n\n"
-            for i, doc in enumerate(documents[:3]):
-                sources_text += f"**{i+1}.** 논문 ID: {doc.metadata.get('paper_id', 'N/A')}\n"
-                sources_text += f"   제목: {doc.metadata.get('title', 'N/A')}\n"
-                sources_text += f"   저널: {doc.metadata.get('journal', 'N/A')}\n\n"
+            # 타빌리 검색 결과가 있는지 확인 (소스가 "Tavily"인 문서)
+            tavily_docs = [doc for doc in documents if doc.metadata.get("source") == "Tavily" or doc.metadata.get("source") == "Tavily Summary"]
+            pubmed_docs = [doc for doc in documents if doc.metadata.get("source") != "Tavily" and doc.metadata.get("source") != "Tavily Summary"]
             
-            # 소스 정보를 새 메시지로 전송 (LangSmith에 부속 정보로 기록하기 위한 메타데이터 추가)
-            sources_msg = cl.Message(content=sources_text)
-            if workflow_run_id:
-                sources_msg.metadata = {"parent_run_id": workflow_run_id, "type": "sources"}
-            await sources_msg.send()
+            # 실제 논문 소스가 있는 경우에만 참고 논문 표시
+            if pubmed_docs and len(pubmed_docs) > 0:
+                sources_text = "### 참고 논문\n\n"
+                for i, doc in enumerate(pubmed_docs[:3]):
+                    sources_text += f"**{i+1}.** 논문 ID: {doc.metadata.get('paper_id', 'N/A')}\n"
+                    sources_text += f"   제목: {doc.metadata.get('title', 'N/A')}\n"
+                    sources_text += f"   저널: {doc.metadata.get('journal', 'N/A')}\n\n"
+                
+                # 소스 정보를 새 메시지로 전송
+                sources_msg = cl.Message(content=sources_text)
+                if workflow_run_id:
+                    sources_msg.metadata = {"parent_run_id": workflow_run_id, "type": "sources"}
+                await sources_msg.send()
+            
+            # 타빌리 검색 결과 표시
+            if tavily_docs:
+                # 타빌리만 사용한 경우 설명 추가
+                if not pubmed_docs:
+                    intro_text = "### 웹 검색 결과\n\n관련 논문이 데이터베이스에 없어 웹 검색으로 정보를 찾았습니다.\n\n"
+                else:
+                    intro_text = "### 웹 검색 결과\n\n"
+                
+                tavily_text = intro_text
+                
+                # 타빌리 요약을 먼저 표시
+                summary_docs = [doc for doc in tavily_docs if doc.metadata.get("title") == "타빌리 요약"]
+                search_result_docs = [doc for doc in tavily_docs if doc.metadata.get("title") != "타빌리 요약"]
+                
+                # 요약 정보 표시
+                if summary_docs:
+                    summary_doc = summary_docs[0]
+                    tavily_text += f"**AI 요약:** {summary_doc.page_content}\n\n"
+                    if search_result_docs:
+                        tavily_text += "**검색 결과:**\n\n"
+                
+                # 검색 결과 표시
+                for i, doc in enumerate(search_result_docs):
+                    title = doc.metadata.get("title", "검색 결과")
+                    url = doc.metadata.get("url", "")
+                    
+                    tavily_text += f"**{i+1}.** {title}\n"
+                    if url:
+                        tavily_text += f"   [원본 링크]({url})\n"
+                    # 내용 미리보기 (너무 길면 생략)
+                    content_preview = doc.page_content[:150] + "..." if len(doc.page_content) > 150 else doc.page_content
+                    tavily_text += f"   {content_preview}\n\n"
+                
+                # 타빌리 소스 정보 메시지 전송
+                await cl.Message(content=tavily_text, author="웹 검색").send()
         
         # 상담 질문에 대한 소스 문서 표시 추가
         elif question_type == "counseling" and documents:
-            sources_text = "### 참고 자료\n\n"
+            # 소스 문서 헤더 표시
+            await cl.Message(content="### 참고 자료", author="시스템").send()
             
+            # 각 문서를 개별 메시지로 표시
             for i, doc in enumerate(documents):
                 title = doc.metadata.get("title", "제목 없음")
                 url = doc.metadata.get("video_url", "")
                 
-                # 내용 미리보기 (첫 100자 정도)
-                content_preview = doc.page_content[:100] + "..." if len(doc.page_content) > 100 else doc.page_content
+                # 유튜브 URL에서 비디오 ID 추출
+                video_id = ""
+                if url and "youtube.com" in url:
+                    if "v=" in url:
+                        video_id = url.split("v=")[1].split("&")[0]
+                    elif "youtu.be/" in url:
+                        video_id = url.split("youtu.be/")[1].split("?")[0]
                 
+                # 제목과 링크 메시지 생성
+                source_content = f"**{i+1}.** {title}\n\n"
+                
+                # 유튜브 URL이 있는 경우 링크 추가
                 if url:
-                    sources_text += f"**{i+1}.** [{title}]({url}) - 유튜브 컨텐츠\n"
-                else:
-                    sources_text += f"**{i+1}.** {title} - 유튜브 컨텐츠\n"
+                    source_content += f"[유튜브 영상 바로가기]({url})\n\n"
                 
-                # 간략한 내용 표시
-                sources_text += f"```\n{content_preview}\n```\n\n"
-            
-            # 소스 정보 메시지 추가
-            await cl.Message(
-                content=sources_text,
-                author="시스템",
-            ).send()
+                # 비디오 문서 내용 메시지 전송
+                await cl.Message(content=source_content, author="시스템").send()
+                
+                # 유튜브 썸네일 이미지 별도 전송
+                if video_id:
+                    elements = []
+                    # 유튜브 플레이어 추가하려고 시도
+                    try:
+                        # 비디오 요소 추가 시도
+                        elements.append(
+                            cl.Video(
+                                name=f"youtube_video_{i}",
+                                url=url,
+                                display="inline"
+                            )
+                        )
+                    except Exception as e:
+                        # 비디오 요소가 실패하면 이미지로 대체
+                        thumbnail_url = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
+                        elements.append(
+                            cl.Image(
+                                name=f"youtube_thumbnail_{i}",
+                                url=thumbnail_url,
+                                display="inline"
+                            )
+                        )
+                    
+                    # 비디오/이미지 요소가 포함된 메시지 별도 전송
+                    await cl.Message(content="", author="시스템", elements=elements).send()
     
     except Exception as e:
         cl.logger.error(f"워크플로우 실행 중 오류 발생: {str(e)}")

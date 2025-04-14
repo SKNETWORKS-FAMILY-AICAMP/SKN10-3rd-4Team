@@ -31,7 +31,7 @@
 <br><br>
 **출처**  
 - [[그래픽] 우울증 환자 수·진료비 추이](https://www.yna.co.kr/view/GYH20240110000200044)
-- [우울증 환자 5명 중 1명은 ‘20대’...타 연령대 압도](https://www.edaily.co.kr/News/Read?newsId=02046726632365000&mediaCodeNo=257)
+- [우울증 환자 5명 중 1명은 '20대'...타 연령대 압도](https://www.edaily.co.kr/News/Read?newsId=02046726632365000&mediaCodeNo=257)
 
 ## 2. 🎯 프로젝트 목표
 - 💬 **질문/답변 기반 상호작용**  
@@ -88,12 +88,53 @@
 └── README.md               # 프로젝트 문서
 ```
 
-## 5. 시스템 아키텍쳐
+## 5. 설치 및 실행 방법
+
+### 1. 저장소 클론
+```bash
+git clone https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN10-3rd-4Team.git
+cd SKN10-3rd-4Team
+```
+
+### 2. 의존성 설치
+```bash
+pip install -r requirements.txt
+```
+
+### 3. 환경 변수 설정
+`.env.example` 파일을 `.env`로 복사하고 필요한 API 키를 설정합니다:
+```bash
+cp .env.example .env
+```
+
+`.env` 파일 내용 예시:
+```
+OLLAMA_BASE_URL=http://localhost:11434
+LANGCHAIN_TRACING_V2=false
+LANGCHAIN_ENDPOINT=https://api.smith.langchain.com
+LANGCHAIN_API_KEY=your_langchain_api_key
+TAVILY_API_KEY=your_tavily_api_key  # 타빌리 API 키 추가
+```
+
+### 4. Tavily API 키 설정
+- [Tavily API](https://tavily.com/) 웹사이트에 가입하여 API 키를 얻습니다.
+- 위 `.env` 파일의 `TAVILY_API_KEY` 항목에 발급받은 API 키를 입력합니다.
+- 또는 환경 변수로 직접 설정할 수 있습니다:
+  ```bash
+  export TAVILY_API_KEY=your_tavily_api_key
+  ```
+
+### 5. Chainlit 애플리케이션 실행
+```bash
+chainlit run app.py
+```
+
+## 6. 시스템 아키텍쳐
 <img src="images/FlowChart.png" width="600" height="300"/>
 
 <br>
 
-## 6. 데이터 소스
+## 7. 데이터 소스
 ### 🎥 유튜브
 -  [명쾌한 최원장](https://www.youtube.com/@clearheal)
 -  [14F 일사에프](https://www.youtube.com/@14FMBC)
@@ -107,7 +148,7 @@
 
 <br>
 
-## 7. 데이터 전처리
+## 8. 데이터 전처리
 -  유튜브 url과 연결해서 오디오 추출
 ```Python
 def extract_audio(url):
@@ -151,7 +192,7 @@ def summary(text):
   {content}
   """
 ```
-## 8. Prompt
+## 9. Prompt
 - classifier
 ```Python
 def classify_question(self, question):
@@ -232,7 +273,7 @@ def create_prompt(self, question, context):
 
         return template.format(question=question, context=context)
 ```
-## 9. 결과
+## 10. 결과
 - Counselor ver.
 <img src="images/test_counselor.png" width="600" height="300"/>
 <img src="images/test_counselor_terminal.png" width="600" height="300"/>
@@ -246,7 +287,7 @@ def create_prompt(self, question, context):
 - LangGraph
 <img src="images/langsmith.png" width="500" height="600"/>
 
-## 10. 회고록
+## 11. 회고록
 - 김현수👑👍: 
 - 남궁승원: 처음부터 인원이 줄어서 4명으로 시작해서 인원이 부족한 상황에서 무능한 조장 데리고 이끌어서 완료해주신 유능한 조원분들께 감사드립니다.
 - 조현정👑👍:

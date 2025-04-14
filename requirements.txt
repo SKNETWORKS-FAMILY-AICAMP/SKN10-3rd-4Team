@@ -4,8 +4,9 @@ langchain
 langchain-community
 faiss-cpu
 ipywidgets
-dotenv
+python-dotenv
 langgraph
 biopython
 requests
 beautifulsoup4
+tavily-python

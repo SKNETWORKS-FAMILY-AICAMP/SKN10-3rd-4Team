@@ -3,8 +3,11 @@ from typing import Literal, Dict, List, Any
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain.schema.runnable.config import RunnableConfig
 from langgraph.graph import StateGraph, START, END
-from src.utils.youtube_embeddings import YoutubeEmbeddings
+from src.rag.embeddings import YoutubeEmbeddingManager
 from pathlib import Path
+import numpy as np
+from tavily import TavilyClient
+from langchain.docstore.document import Document
 
 class WorkflowManager:
     """
@@ -26,6 +29,14 @@ class WorkflowManager:
         # 벡터 저장소 경로 설정
         self.project_root = Path(__file__).parent.parent.parent
         self.youtube_vector_path = str(self.project_root / "vectors" / "youtube_vectors")
+        
+        # Tavily API 키 설정 (환경 변수에서 가져오기)
+        self.tavily_api_key = os.environ.get("TAVILY_API_KEY", "")
+        if not self.tavily_api_key:
+            print("주의: TAVILY_API_KEY 환경 변수가 설정되지 않았습니다.")
+            print("Tavily 검색을 사용하려면 .env 파일에 TAVILY_API_KEY를 설정하세요.")
+        else:
+            print(f"Tavily API 키가 성공적으로 로드되었습니다. (길이: {len(self.tavily_api_key)}자)")
     
     def _create_workflow(self):
         """워크플로우 생성"""
@@ -36,6 +47,9 @@ class WorkflowManager:
             documents: List[Any] = []
             question_type: str = "academic" # 기본값은 학술 질문
             run_id: str = None  # LangSmith 추적을 위한 run_id 필드 추가
+            similarity_scores: List[float] = []  # 유사도 점수 리스트
+            use_tavily: bool = False  # 타빌리 검색 사용 여부
+            tavily_results: List[Any] = []  # 타빌리 검색 결과
         
         # 현재 클래스 인스턴스에 대한 참조 저장
         workflow_manager = self
@@ -69,13 +83,61 @@ class WorkflowManager:
             """관련 문서 검색"""
             question = state["messages"][-1].content
             try:
-                docs = workflow_manager.vector_store.similarity_search(question, k=3)
-                print(f"{len(docs)}개의 관련 문서를 검색했습니다.")
+                # similarity_search_with_score 메서드 사용하여 유사도 점수 획득
+                docs_with_scores = workflow_manager.vector_store.similarity_search_with_score(question, k=3)
+                
+                # 문서와 점수 분리
+                docs = [doc for doc, _ in docs_with_scores]
+                scores = [float(score) for _, score in docs_with_scores]
+                
+                # 각 문서에 필요한 메타데이터가 있는지 확인하고 보완
+                for i, doc in enumerate(docs):
+                    # 메타데이터가 없거나 불완전한 경우 보완
+                    if not doc.metadata:
+                        doc.metadata = {}
+                    
+                    # source가 지정되어 있지 않으면 '논문'으로 설정
+                    if 'source' not in doc.metadata:
+                        doc.metadata['source'] = '논문'
+                    
+                    # 제목이 없는 경우 첫 줄을 제목으로 사용
+                    if 'title' not in doc.metadata or not doc.metadata['title']:
+                        # 문서 내용에서 첫 번째 줄 또는 첫 50자를 제목으로 사용
+                        first_line = doc.page_content.split('\n')[0][:50]
+                        if len(first_line) > 0:
+                            doc.metadata['title'] = first_line + ('...' if len(first_line) >= 50 else '')
+                        else:
+                            doc.metadata['title'] = f"논문 {i+1}" 
+                    
+                    # paper_id가 없는 경우 기본값 설정
+                    if 'paper_id' not in doc.metadata:
+                        doc.metadata['paper_id'] = f"doc_{i+1}"
+                    
+                    # journal이 없는 경우 기본값 설정
+                    if 'journal' not in doc.metadata:
+                        doc.metadata['journal'] = "학술 저널"
+                
+                # 평균 유사도 점수 계산
+                avg_score = sum(scores) / len(scores) if scores else 0
+                
+                print(f"{len(docs)}개의 관련 문서를 검색했습니다. 평균 유사도 점수: {avg_score:.4f}")
+                
+                # 유사도 임계값 설정 (낮을수록 유사도가 높음)
+                similarity_threshold = 0.25
+                use_tavily = avg_score > similarity_threshold
+                
+                if use_tavily:
+                    print(f"유사도가 낮아 타빌리 검색으로 전환합니다 (점수: {avg_score:.4f} > {similarity_threshold})")
+                    # 유사도가 낮을 경우 논문 문서를 완전히 제외
+                    docs = []
+                
                 return {
                     "messages": state["messages"], 
                     "documents": docs, 
                     "question_type": state.get("question_type"),
-                    "run_id": state.get("run_id")
+                    "run_id": state.get("run_id"),
+                    "similarity_scores": scores,
+                    "use_tavily": use_tavily
                 }
             except Exception as e:
                 print(f"문서 검색 중 오류 발생: {str(e)}")
@@ -83,8 +145,79 @@ class WorkflowManager:
                     "messages": state["messages"], 
                     "documents": [], 
                     "question_type": state.get("question_type"),
-                    "run_id": state.get("run_id")
+                    "run_id": state.get("run_id"),
+                    "use_tavily": True  # 오류 발생 시 타빌리 사용
                 }
+        
+        # 타빌리 검색 노드
+        def tavily_search(state: State) -> State:
+            """타빌리 API를 사용한 검색"""
+            question = state["messages"][-1].content
+            try:
+                # 타빌리 API 키 확인
+                api_key = workflow_manager.tavily_api_key
+                if not api_key:
+                    print("타빌리 API 키가 설정되지 않았습니다.")
+                    return state  # 변경 없이 상태 그대로 반환
+                
+                # 타빌리 클라이언트 초기화
+                client = TavilyClient(api_key=api_key)
+                
+                # 검색 쿼리에 의학 용어 추가하여 검색 범위 좁히기
+                search_query = f"depression research {question}"
+                
+                # 타빌리 검색 수행
+                search_result = client.search(
+                    query=search_query,
+                    search_depth="advanced",  # 고급 검색 사용
+                    max_results=3,  # 최대 3개 결과
+                    include_domains=["pubmed.ncbi.nlm.nih.gov", "nih.gov", "ncbi.nlm.nih.gov", "scholar.google.com"], # 의학 관련 도메인
+                    include_answer=True,  # 요약 답변 포함
+                    include_raw_content=True  # 원본 콘텐츠 포함
+                )
+                
+                # 결과를 Document 형식으로 변환
+                tavily_docs = []
+                for result in search_result.get("results", []):
+                    content = result.get("content", "")
+                    metadata = {
+                        "title": result.get("title", "검색 결과"),
+                        "url": result.get("url", ""),
+                        "source": "Tavily",
+                        "score": result.get("score", 0)
+                    }
+                    doc = Document(page_content=content, metadata=metadata)
+                    tavily_docs.append(doc)
+                
+                # 타빌리 요약 답변이 있으면 추가
+                tavily_answer = search_result.get("answer", "")
+                if tavily_answer:
+                    answer_doc = Document(
+                        page_content=tavily_answer,
+                        metadata={
+                            "title": "타빌리 요약", 
+                            "source": "Tavily Summary",
+                            "paper_id": None,
+                            "journal": None
+                        }
+                    )
+                    tavily_docs.append(answer_doc)
+                
+                print(f"타빌리 검색 완료: {len(tavily_docs)}개 문서 검색됨")
+                
+                # 타빌리 검색 결과만 사용 (논문 문서 제외)
+                all_docs = tavily_docs
+                
+                return {
+                    "messages": state["messages"],
+                    "documents": all_docs,
+                    "question_type": state.get("question_type"),
+                    "run_id": state.get("run_id"),
+                    "tavily_results": tavily_docs
+                }
+            except Exception as e:
+                print(f"타빌리 검색 중 오류 발생: {str(e)}")
+                return state  # 오류 발생 시 기존 상태 반환
         
         # 유튜브 문서 검색 노드
         def retrieve_youtube_documents(state: State) -> State:
@@ -93,16 +226,13 @@ class WorkflowManager:
             try:
                 print("유튜브 벡터 저장소 로드 시도...")
                 # 유튜브 벡터 저장소에서 관련 컨텍스트 검색
-                youtube_embeddings = YoutubeEmbeddings()  # BGE-Large-EN 사용
+                youtube_embeddings = YoutubeEmbeddingManager(model_name="bge-m3")
                 vector_store_path = workflow_manager.youtube_vector_path
                 print(f"벡터 저장소 경로: {vector_store_path}")
                 
                 # 벡터 저장소 로드
                 vector_store = youtube_embeddings.load_embeddings(vector_store_path)
                 print("벡터 저장소 로드 성공")
-                
-                # 벡터 저장소를 인스턴스 변수로 저장
-                youtube_embeddings.vector_store = vector_store
                 
                 # 유사도 검색 수행
                 results = youtube_embeddings.similarity_search(question, k=2)
@@ -124,6 +254,17 @@ class WorkflowManager:
                     "run_id": state.get("run_id")
                 }
         
+        # 다음 경로 결정 (타빌리 사용 여부)
+        def route_academic_search(state: State) -> Literal["use_tavily", "skip_tavily"]:
+            """논문 검색 결과에 따라 타빌리 검색 사용 여부 결정"""
+            use_tavily = state.get("use_tavily", False)
+            if use_tavily:
+                print("타빌리 검색 노드로 라우팅합니다.")
+                return "use_tavily"
+            else:
+                print("타빌리 검색을 건너뜁니다.")
+                return "skip_tavily"
+        
         # 학술 응답 생성 노드
         def generate_academic_response(state: State) -> State:
             """학술 질문에 대한 응답 생성"""
@@ -134,15 +275,36 @@ class WorkflowManager:
                 if not documents:
                     response = "죄송합니다. 질문과 관련된 정보를 찾을 수 없습니다. 다른 질문을 해주시겠어요?"
                 else:
-                    context = "\n\n".join([doc.page_content for doc in documents])
-                    # 스트리밍 콜백 확인 및 전달 (워크플로우 매니저에서 config 가져오기)
+                    # 타빌리 검색 결과가 있는지 확인
+                    tavily_results = state.get("tavily_results", [])
+                    has_tavily = len(tavily_results) > 0
+                    
+                    # 타빌리 검색을 사용한 경우 문서 메타데이터에 소스 정보 추가
+                    if has_tavily:
+                        # 논문 데이터 없이 타빌리 결과만 있는 경우
+                        if not [doc for doc in documents if doc.metadata.get("source") != "Tavily" and doc.metadata.get("source") != "Tavily Summary"]:
+                            # 타빌리 요약 문서의 메타데이터에 정보 추가
+                            for doc in documents:
+                                if "source_info" not in doc.metadata:
+                                    doc.metadata["source_info"] = "이 응답은 웹 검색 결과만을 기반으로 생성되었습니다. 논문 데이터베이스에서 관련 정보를 찾을 수 없었습니다."
+                        else:
+                            # 혼합된 경우 소스 정보 추가
+                            for doc in documents:
+                                if "source_info" not in doc.metadata:
+                                    doc.metadata["source_info"] = "이 응답은 논문 데이터베이스와 웹 검색 결과를 기반으로 생성되었습니다."
+                    
+                    # 스트리밍 콜백 확인 및 전달
                     callbacks = None
                     if workflow_manager.current_config and "callbacks" in workflow_manager.current_config:
                         callbacks = workflow_manager.current_config.get("callbacks")
                         print(f"학술 응답 생성에 콜백 전달: {callbacks}")
                     
-                    # llm_manager의 generate_response 메서드 호출 (콜백 전달)
-                    response = workflow_manager.llm_manager.generate_response(question, context, callbacks=callbacks)
+                    # 응답 생성 - document 객체를 직접 전달
+                    response = workflow_manager.llm_manager.generate_response(
+                        question=question, 
+                        context=documents,  # 문서 객체 그대로 전달
+                        callbacks=callbacks
+                    )
                 
                 return {
                     "messages": state["messages"] + [AIMessage(content=response, tags=["final"])], 
@@ -176,10 +338,10 @@ class WorkflowManager:
                     callbacks = workflow_manager.current_config.get("callbacks")
                     print(f"상담 응답 생성에 콜백 전달: {callbacks}")
                 
-                # 상담 응답 생성 (유튜브 컨텍스트 포함)
+                # 통합된 generate_counseling_response 함수 사용
                 response = workflow_manager.llm_manager.generate_counseling_response(
-                    question, 
-                    context=context if context else None,
+                    question=question, 
+                    context=context,
                     callbacks=callbacks
                 )
                 
@@ -205,6 +367,7 @@ class WorkflowManager:
         # 노드 추가
         workflow.add_node("classify", classify_question)
         workflow.add_node("retrieve", retrieve_documents)
+        workflow.add_node("tavily_search", tavily_search)
         workflow.add_node("retrieve_youtube", retrieve_youtube_documents)
         workflow.add_node("generate_academic", generate_academic_response)
         workflow.add_node("generate_counseling", generate_counseling_response)
@@ -222,8 +385,18 @@ class WorkflowManager:
             }
         )
         
-        # 각 경로의 나머지 엣지 추가
-        workflow.add_edge("retrieve", "generate_academic")
+        # 논문 검색 결과에 따라 타빌리 검색 경로 조건부 추가
+        workflow.add_conditional_edges(
+            "retrieve", 
+            route_academic_search,
+            {
+                "use_tavily": "tavily_search", 
+                "skip_tavily": "generate_academic"
+            }
+        )
+        
+        # 나머지 엣지 추가
+        workflow.add_edge("tavily_search", "generate_academic")
         workflow.add_edge("retrieve_youtube", "generate_counseling")
         workflow.add_edge("generate_academic", END)
         workflow.add_edge("generate_counseling", END)
