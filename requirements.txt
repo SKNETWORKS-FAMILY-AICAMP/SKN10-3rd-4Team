@@ -6,3 +6,6 @@ faiss-cpu
 ipywidgets
 dotenv
 langgraph
+biopython
+requests
+beautifulsoup4
