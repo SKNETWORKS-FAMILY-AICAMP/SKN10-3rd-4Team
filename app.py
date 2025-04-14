@@ -110,72 +110,134 @@ async def on_message(message: cl.Message):
     
     # Custom streaming callback handler
     class ChainlitStreamingHandler(BaseCallbackHandler):
+        def __init__(self):
+            # 스트리밍 응답이 시작되었는지 추적
+            self.streaming_started = False
+        
         def on_llm_new_token(self, token: str, **kwargs):
+            # 스트리밍 시작 표시
+            self.streaming_started = True
+            # 토큰을 즉시 스트리밍
             cl.run_sync(msg.stream_token(token))
     
     try:
-        # 워크플로우 실행 (스트리밍 처리)
-        last_state = None
+        # 스트리밍 핸들러 생성
+        streaming_handler = ChainlitStreamingHandler()
+        
+        # 워크플로우 실행 변수 초기화
         documents = []
         question_type = "academic"  # 기본값
+        last_node = None
+        response_content = ""
+        response_received = False
+        
+        # 워크플로우 실행 상태 추적
+        classify_done = False
+        retrieve_done = False
+        generation_started = False
         
         # 스트리밍 모드로 워크플로우 실행
         for state, metadata in workflow_manager.stream_process(
             question, 
-            callbacks=[ChainlitStreamingHandler()]
+            callbacks=[streaming_handler]
         ):
-            # 노드 이름
-            node = metadata.get("langgraph_node", "unknown")
-            cl.logger.info(f"현재 노드: {node}")
+            # 현재 노드 이름
+            current_node = metadata.get("langgraph_node", "unknown")
+            cl.logger.info(f"현재 노드: {current_node}")
             
-            # 워크플로우 진행 중에 정보 추출
-            # 문서 저장 (retrieve 노드에서)
-            if "documents" in state and isinstance(state["documents"], list):
-                documents = state["documents"]
+            # 새로운 노드로 전환될 때 상태 업데이트
+            if last_node != current_node:
+                cl.logger.info(f"노드 전환: {last_node} -> {current_node}")
+                last_node = current_node
+                
+                # 질문 분류 완료
+                if current_node == "classify" and not classify_done:
+                    classify_done = True
+                    if "question_type" in state:
+                        question_type = state["question_type"]
+                        cl.logger.info(f"질문 유형 분류 완료: {question_type}")
+                
+                # 문서 검색 완료
+                elif current_node == "retrieve" and not retrieve_done:
+                    retrieve_done = True
+                    if "documents" in state and isinstance(state["documents"], list):
+                        documents = state["documents"]
+                        cl.logger.info(f"문서 검색 완료: {len(documents)}개 문서 찾음")
+                
+                # 응답 생성 시작
+                elif (current_node == "generate_academic" or current_node == "generate_counseling") and not generation_started:
+                    generation_started = True
+                    cl.logger.info(f"응답 생성 시작: {current_node}")
             
-            # 질문 유형 저장
-            if "question_type" in state:
-                question_type = state["question_type"]
-                cl.logger.info(f"질문 유형 갱신: {question_type}")
+            # 상태에서 응답 메시지 확인
+            if isinstance(state, dict) and "messages" in state:
+                for msg_item in state["messages"]:
+                    if not isinstance(msg_item, HumanMessage) and hasattr(msg_item, "content"):
+                        message_content = msg_item.content
+                        # 태그에 final이 있는지 확인
+                        is_final = hasattr(msg_item, "tags") and "final" in msg_item.tags
+                        
+                        # 새 응답 내용이 있는 경우
+                        if message_content and message_content != response_content:
+                            response_content = message_content
+                            response_received = True
+                            
+                            # 토큰 기반 스트리밍이 이미 응답을 처리 중이면 스킵
+                            if not streaming_handler.streaming_started:
+                                cl.logger.info("토큰 스트리밍이 시작되지 않아 전체 응답 업데이트")
+                                msg.content = message_content
+                                await msg.update()
+                            
+                            # 최종 응답이면 기록
+                            if is_final:
+                                cl.logger.info("최종 응답 수신됨")
+        
+        # 토큰 스트리밍이 성공적으로 이루어졌는지 확인
+        if streaming_handler.streaming_started:
+            cl.logger.info("토큰 스트리밍이 성공적으로 완료됨")
+        # 스트리밍이 없었지만 응답이 있는 경우
+        elif response_received:
+            cl.logger.info("스트리밍 없이 전체 응답이 수신됨")
+            # 메시지 이미 업데이트됨
+        # 응답이 전혀 없는 경우
+        else:
+            cl.logger.warning("응답이 수신되지 않음, 워크플로우 응답 직접 실행")
+            
+            # 응답 생성을 위한 전체 워크플로우 실행 시도
+            try:
+                # 비스트리밍으로 완전한 응답 가져오기
+                result = workflow_manager.process_message(question)
                 
-            # 상태 업데이트
-            last_state = state
-                
-        # 응답 메시지가 스트리밍되지 않은 경우 최종 상태에서 응답 업데이트
-        if not msg.content and last_state:
-            # 메시지 찾기
-            ai_message_found = False
-            for message in last_state.get("messages", []):
-                if hasattr(message, "type") and message.type == "ai":
-                    ai_message_found = True
-                    msg.content = message.content
-                    await msg.update()
-                    break
+                # 응답 찾기
+                if isinstance(result, dict) and "messages" in result:
+                    found_response = False
+                    for msg_item in result["messages"]:
+                        if not isinstance(msg_item, HumanMessage) and hasattr(msg_item, "content"):
+                            found_response = True
+                            msg.content = msg_item.content
+                            await msg.update()
+                            break
                     
-                # AIMessage의 경우 확인
-                if not isinstance(message, HumanMessage) and hasattr(message, "content"):
-                    ai_message_found = True
-                    msg.content = message.content
-                    await msg.update()
-                    break
-                    
-            # 메시지 객체로부터 직접 내용 가져오기 시도
-            if not ai_message_found and last_state.get("messages"):
-                for message in last_state.get("messages"):
-                    if hasattr(message, "content") and not isinstance(message, HumanMessage):
-                        msg.content = message.content
+                    if not found_response:
+                        msg.content = "응답을 생성하지 못했습니다. 다시 시도해주세요."
                         await msg.update()
-                        break
-            
-            # 여전히 내용이 없으면 기본 메시지 설정
-            if not msg.content:
-                msg.content = "응답을 생성했지만 내용을 표시할 수 없습니다."
+                else:
+                    msg.content = "응답을 생성하지 못했습니다. 다시 시도해주세요."
+                    await msg.update()
+            except Exception as e:
+                cl.logger.error(f"직접 응답 생성 중 오류: {str(e)}")
+                msg.content = "응답을 생성하는 데 문제가 발생했습니다. 다시 시도해주세요."
                 await msg.update()
-                
-        # 최종 질문 유형과 결과 로깅
+        
+        # 메시지가 비어 있는 경우 기본 메시지 설정
+        if not msg.content:
+            msg.content = "죄송합니다. 응답을 생성하지 못했습니다. 다시 질문해 주세요."
+            await msg.update()
+        
+        # 질문 유형에 따라 추가 정보 표시
         cl.logger.info(f"최종 질문 유형: {question_type}, 문서 수: {len(documents)}")
         
-        # 학술 질문에 대해서만 소스 문서 표시
+        # 학술 질문의 경우 소스 문서 정보 표시
         if question_type == "academic" and documents:
             sources_text = "### 참고 논문\n\n"
             for i, doc in enumerate(documents[:3]):
@@ -187,13 +249,8 @@ async def on_message(message: cl.Message):
             await cl.Message(content=sources_text).send()
     
     except Exception as e:
-        cl.logger.error(f"워크플로우 실행 중 오류 발생: {str(e)}")
+        cl.logger.error(f"워크플로우 실행 중 오류 발생: {str(e)}", exc_info=True)
         await cl.Message(content=f"오류가 발생했습니다: {str(e)}").send()
-        msg.content = "응답 생성 중 오류가 발생했습니다."
+        msg.content = "응답 생성 중 오류가 발생했습니다. 다시 시도해주세요."
         await msg.update()
         return
-    
-    # 메시지가 여전히 비어있으면 업데이트
-    if not msg.content:
-        msg.content = "응답 생성이 완료되었지만 내용이 표시되지 않습니다. 다시 시도해주세요."
-        await msg.update()

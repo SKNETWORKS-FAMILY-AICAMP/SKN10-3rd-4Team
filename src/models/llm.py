@@ -1,5 +1,26 @@
 import os
 from langchain_community.llms import Ollama
+from typing import List, Iterator, Any
+from langchain.callbacks.base import BaseCallbackHandler
+import time
+
+class TokenStreamingHandler(BaseCallbackHandler):
+    """토큰 스트리밍을 위한 간단한 콜백 핸들러"""
+    
+    def __init__(self, external_callbacks=None):
+        self.tokens = []
+        self.external_callbacks = external_callbacks or []
+        
+    def on_llm_new_token(self, token: str, **kwargs) -> None:
+        """새 토큰 생성 시 호출"""
+        self.tokens.append(token)
+        # 외부 콜백이 있으면 각각 호출
+        for callback in self.external_callbacks:
+            if hasattr(callback, "on_llm_new_token"):
+                try:
+                    callback.on_llm_new_token(token=token, **kwargs)
+                except Exception as e:
+                    print(f"외부 콜백 처리 중 오류: {str(e)}")
 
 class LLMManager:
     def __init__(self, model_name, base_url, temperature=0.1, streaming=False):
@@ -25,8 +46,38 @@ class LLMManager:
             response = self.llm.generate([prompt], callbacks=callbacks)
             return response.generations[0][0].text
         else:
-            response = self.llm(prompt)
+            response = self.llm.invoke(prompt)  # __call__ 대신 invoke 메서드 사용
             return response
+
+    def stream_response_tokens(self, question: str, context: str, callbacks=None) -> Iterator[str]:
+        """
+        학술적 질문에 대한 응답을 토큰 단위로 스트리밍하여 반환합니다.
+        
+        Args:
+            question (str): 사용자 질문
+            context (str): 검색된 문서 내용
+            callbacks: 콜백 핸들러 리스트
+            
+        Returns:
+            Iterator[str]: 토큰 스트림 이터레이터
+        """
+        prompt = self.create_prompt(question, context)
+        
+        try:
+            # 표준화된 토큰 핸들러 생성
+            handler = TokenStreamingHandler(callbacks)
+            
+            # 생성 실행 (스트리밍 모드)
+            self.llm.generate([prompt], callbacks=[handler])
+            
+            # 모든 토큰 반환
+            for token in handler.tokens:
+                yield token
+                time.sleep(0.01)  # 자연스러운 스트리밍을 위한 짧은 지연
+        except Exception as e:
+            print(f"토큰 스트리밍 중 오류 발생: {str(e)}")
+            # 오류 발생 시 오류 메시지를 단일 토큰으로 반환
+            yield f"토큰 스트리밍 오류: {str(e)}"
 
     def classify_question(self, question):
         """
@@ -52,7 +103,7 @@ class LLMManager:
         """.format(question=question)
         
         try:
-            response = self.llm(prompt)
+            response = self.llm.invoke(prompt)  # __call__ 대신 invoke 메서드 사용
             result = response.strip().lower()
             
             # 응답에 academic이 포함되어 있으면 academic으로, 아니면 counseling으로 간주
@@ -83,8 +134,37 @@ class LLMManager:
             response = self.llm.generate([prompt], callbacks=callbacks)
             return response.generations[0][0].text
         else:
-            response = self.llm(prompt)
+            response = self.llm.invoke(prompt)  # __call__ 대신 invoke 메서드 사용
             return response
+
+    def stream_counseling_tokens(self, question: str, callbacks=None) -> Iterator[str]:
+        """
+        상담 질문에 대한 응답을 토큰 단위로 스트리밍하여 반환합니다.
+        
+        Args:
+            question (str): 사용자 질문
+            callbacks: 콜백 핸들러 리스트
+            
+        Returns:
+            Iterator[str]: 토큰 스트림 이터레이터
+        """
+        prompt = self.create_counseling_prompt(question)
+        
+        try:
+            # 표준화된 토큰 핸들러 생성
+            handler = TokenStreamingHandler(callbacks)
+            
+            # 생성 실행 (스트리밍 모드)
+            self.llm.generate([prompt], callbacks=[handler])
+            
+            # 모든 토큰 반환
+            for token in handler.tokens:
+                yield token
+                time.sleep(0.01)  # 자연스러운 스트리밍을 위한 짧은 지연
+        except Exception as e:
+            print(f"상담 토큰 스트리밍 중 오류 발생: {str(e)}")
+            # 오류 발생 시 오류 메시지를 단일 토큰으로 반환
+            yield f"토큰 스트리밍 오류: {str(e)}"
 
     def create_counseling_prompt(self, question):
         """

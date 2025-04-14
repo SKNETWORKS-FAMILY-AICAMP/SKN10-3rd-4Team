@@ -184,157 +184,191 @@ class WorkflowManager:
     
     def stream_process(self, message: str, callbacks=None, config=None):
         """
-        사용자 메시지 처리 (스트리밍 모드)
-        
-        Args:
-            message (str): 사용자 메시지  
-            callbacks: 콜백 핸들러 리스트
-            config: Runnable 설정
-            
-        Returns:
-            generator: (state, metadata) 튜플의 제너레이터
+        LangGraph를 직접 사용하지 않고 토큰 단위 스트리밍을 관리하는 함수
         """
-        # 기본 설정
-        if config is None:
-            config = {}
-            
-        # 콜백이 있으면 설정에 추가
-        if callbacks:
-            config["callbacks"] = callbacks
-                
-        # 초기 상태 설정
+        # 초기 상태
         initial_state = {
             "messages": [HumanMessage(content=message)]
         }
         
-        last_state = None
-        
+        # 1. 질문 분류
         try:
-            # 1. 먼저 전체 실행을 통해 분류부터 실행
-            # (질문 분류를 위한 사전 단계로 실행하고 결과 캐시하기)
-            config_copy = config.copy()
-            config_copy["configurable"] = {"thread_id": message}  # 스레드 ID 정의하여 캐싱
+            print("1단계: 질문 분류 수행")
+            # 질문 분류 직접 수행
+            question = message
+            try:
+                question_type = self.llm_manager.classify_question(question)
+                print(f"질문 유형: {question_type}")
+            except Exception as e:
+                print(f"질문 분류 중 오류: {str(e)}")
+                question_type = "academic"  # 기본값
+                
+            # 첫 번째 상태
+            first_state = {
+                "messages": initial_state["messages"],
+                "question_type": question_type
+            }
             
-            print("전체 워크플로우 실행 중...")
-            full_result = self.graph.invoke(
-                initial_state,
-                config=RunnableConfig(**config_copy)
-            )
+            # 분류 결과 반환
+            yield first_state, {"langgraph_node": "classify"}
             
-            # 분류 결과와 문서 캐시
-            question_type = full_result.get("question_type", "academic")
-            documents = full_result.get("documents", [])
+            # 2. 문서 검색 또는 상담 응답 생성
+            documents = []
             
-            print(f"전체 실행 후: 질문 유형: {question_type}, 문서 수: {len(documents)}")
-            
-            # 2. 스트리밍 모드로 다시 실행 (노드 진행 과정과 응답 생성 스트리밍 위해)
-            config["configurable"] = {"thread_id": message}  # 같은 스레드 ID로 캐시 활용
-            
-            for output in self.graph.stream(
-                initial_state, 
-                config=RunnableConfig(**config),
-                stream_mode="values"
-            ):
-                # 출력 처리
-                if isinstance(output, dict):
-                    # 현재 노드에서의 상태 업데이트
-                    node_name = "unknown"
-                    state_delta = output
+            if question_type == "academic":
+                print("2단계: 학술 질문 - 문서 검색")
+                try:
+                    # 문서 검색 직접 수행
+                    documents = self.vector_store.similarity_search(question, k=3)
+                    print(f"검색된 문서 수: {len(documents)}")
                     
-                    # 기존 상태값 유지
-                    if last_state is None:
-                        # 첫 상태에 캐시된 값 확실히 추가
-                        state_delta["question_type"] = question_type
+                    # 문서 검색 결과 상태
+                    search_state = {
+                        "messages": first_state["messages"],
+                        "question_type": question_type,
+                        "documents": documents
+                    }
+                    
+                    # 문서 검색 결과 반환
+                    yield search_state, {"langgraph_node": "retrieve"}
+                    
+                    # 3. 학술 응답 생성 (스트리밍)
+                    print("3단계: 학술 응답 생성 (토큰 스트리밍)")
+                    
+                    # 문서 내용 컨텍스트 생성
+                    if documents:
+                        context = "\n\n".join([doc.page_content for doc in documents])
                         
-                        # 문서가 있으면 추가
-                        if documents and "documents" not in state_delta:
-                            state_delta["documents"] = documents
+                        # 학술 응답 토큰 단위 스트리밍
+                        try:
+                            # 직접 토큰 단위 스트리밍으로 응답 생성 (콜백으로 토큰 전달)
+                            # 응답 버퍼 (토큰이 추가될 때마다 업데이트)
+                            response_buffer = ""
                             
-                        last_state = state_delta
+                            # 토큰 콜백 정의
+                            class TokenCallback:
+                                def __init__(self, state, node):
+                                    self.state = state
+                                    self.node = node
+                                    
+                                def on_llm_new_token(self, token, **kwargs):
+                                    nonlocal response_buffer
+                                    response_buffer += token
+                                    
+                                    # 토큰마다 현재 상태 복사 및 메시지 업데이트
+                                    token_state = self.state.copy()
+                                    token_state["messages"] = token_state["messages"] + [
+                                        AIMessage(content=response_buffer, tags=["streaming"])
+                                    ]
+                                    
+                                    # 토큰 단위로 상태 반환
+                                    return token_state, {"langgraph_node": self.node}
+                            
+                            # 토큰 콜백 인스턴스 생성
+                            token_callback = TokenCallback(search_state, "generate_academic")
+                            
+                            # 오리지널 콜백이 있으면 추가
+                            streaming_callbacks = []
+                            if callbacks:
+                                streaming_callbacks.extend(callbacks)
+                            
+                            # 토큰 단위 응답 생성
+                            for token in self.llm_manager.stream_response_tokens(question, context, streaming_callbacks):
+                                # 토큰 콜백 호출
+                                token_state = search_state.copy()
+                                response_buffer += token
+                                token_state["messages"] = token_state["messages"] + [
+                                    AIMessage(content=response_buffer, tags=["streaming"])
+                                ]
+                                
+                                # 토큰 단위로 상태 반환
+                                yield token_state, {"langgraph_node": "generate_academic"}
+                            
+                            # 최종 응답 상태
+                            final_state = search_state.copy()
+                            final_state["messages"] = search_state["messages"] + [
+                                AIMessage(content=response_buffer, tags=["final"])
+                            ]
+                            
+                            # 최종 상태 반환
+                            yield final_state, {"langgraph_node": "generate_academic"}
+                            
+                        except Exception as e:
+                            print(f"학술 응답 생성 스트리밍 중 오류: {str(e)}")
+                            error_response = "학술 응답을 생성하는 중에 오류가 발생했습니다. 다시 시도해주세요."
+                            error_state = {
+                                "messages": search_state["messages"] + [AIMessage(content=error_response, tags=["final"])],
+                                "question_type": question_type,
+                                "documents": documents
+                            }
+                            yield error_state, {"langgraph_node": "generate_academic"}
                     else:
-                        # 이전 상태 정보 유지하면서 업데이트
-                        updated_state = last_state.copy()
-                        for key, value in state_delta.items():
-                            updated_state[key] = value
-                            
-                        # 질문 유형 유지
-                        if "question_type" not in state_delta and question_type:
-                            updated_state["question_type"] = question_type
-                            
-                        last_state = updated_state
+                        # 문서가 없는 경우
+                        no_docs_response = "죄송합니다. 질문과 관련된 정보를 찾을 수 없습니다. 다른 질문을 해주시겠어요?"
+                        no_docs_state = {
+                            "messages": search_state["messages"] + [AIMessage(content=no_docs_response, tags=["final"])],
+                            "question_type": question_type,
+                            "documents": []
+                        }
+                        yield no_docs_state, {"langgraph_node": "generate_academic"}
                         
-                    # langgraph_node 메타데이터 유추 
-                    if "messages" in state_delta and len(state_delta["messages"]) > len(initial_state["messages"]):
-                        # 새 메시지가 추가되었다면 응답 생성 노드
-                        if question_type == "counseling":
-                            node_name = "generate_counseling"
-                        else:
-                            node_name = "generate_academic"
-                    elif "documents" in state_delta and state_delta["documents"]:
-                        # 문서가 추가되었다면 검색 노드
-                        node_name = "retrieve"
-                    elif "question_type" in state_delta:
-                        # 질문 유형이 추가되었다면 분류 노드
-                        node_name = "classify"
+                except Exception as e:
+                    print(f"문서 검색 중 오류: {str(e)}")
+                    error_response = "문서 검색 중 오류가 발생했습니다. 다시 시도해주세요."
+                    error_state = {
+                        "messages": first_state["messages"] + [AIMessage(content=error_response, tags=["final"])],
+                        "question_type": question_type,
+                        "documents": []
+                    }
+                    yield error_state, {"langgraph_node": "retrieve"}
+                    
+            else:  # 상담 질문
+                print("2단계: 상담 질문 - 응답 생성 (토큰 스트리밍)")
+                
+                try:
+                    # 상담 응답 토큰 단위 스트리밍
+                    # 응답 버퍼 (토큰이 추가될 때마다 업데이트)
+                    response_buffer = ""
+                    
+                    # 토큰 단위 상담 응답 생성
+                    for token in self.llm_manager.stream_counseling_tokens(question, callbacks):
+                        # 토큰마다 상태 업데이트
+                        token_state = first_state.copy()
+                        response_buffer += token
+                        token_state["messages"] = token_state["messages"] + [
+                            AIMessage(content=response_buffer, tags=["streaming"])
+                        ]
                         
-                    print(f"스트리밍 노드: {node_name}, 상태 키: {', '.join(state_delta.keys())}")
+                        # 토큰 단위로 상태 반환
+                        yield token_state, {"langgraph_node": "generate_counseling"}
                     
-                    # 상태와 노드 이름 반환
-                    yield last_state, {"langgraph_node": node_name}
+                    # 최종 응답 상태
+                    final_state = first_state.copy()
+                    final_state["messages"] = first_state["messages"] + [
+                        AIMessage(content=response_buffer, tags=["final"])
+                    ]
                     
-                elif isinstance(output, tuple) and len(output) == 2:
-                    # (node_name, state) 형식으로 반환된 경우
-                    node_name, state_delta = output
+                    # 최종 상태 반환
+                    yield final_state, {"langgraph_node": "generate_counseling"}
                     
-                    # 상태 업데이트
-                    if last_state is None:
-                        # 첫 상태에 캐시된 값 확실히 추가
-                        state_delta["question_type"] = question_type
-                        
-                        # 문서가 있으면 추가
-                        if documents and "documents" not in state_delta:
-                            state_delta["documents"] = documents
-                            
-                        last_state = state_delta
-                    else:
-                        # 이전 상태 정보 유지하면서 업데이트
-                        updated_state = last_state.copy()
-                        for key, value in state_delta.items():
-                            updated_state[key] = value
-                            
-                        # 질문 유형 유지
-                        if "question_type" not in state_delta and question_type:
-                            updated_state["question_type"] = question_type
-                            
-                        last_state = updated_state
-                        
-                    print(f"스트리밍 노드: {node_name}, 상태 키: {', '.join(state_delta.keys())}")
-                    
-                    # 상태와 노드 이름 반환
-                    yield last_state, {"langgraph_node": node_name}
-                    
-                else:
-                    # 다른 형태로 반환된 경우
-                    print(f"알 수 없는 출력 형식: {type(output)}")
-                    
-                    if last_state is None:
-                        last_state = {"messages": initial_state["messages"], "question_type": question_type}
-                        if documents:
-                            last_state["documents"] = documents
-                            
-                    # 상태와 기본 노드 이름 반환
-                    yield last_state, {"langgraph_node": "unknown"}
+                except Exception as e:
+                    print(f"상담 응답 생성 스트리밍 중 오류: {str(e)}")
+                    error_response = "상담 응답을 생성하는 중에 오류가 발생했습니다. 다시 시도해주세요."
+                    error_state = {
+                        "messages": first_state["messages"] + [AIMessage(content=error_response, tags=["final"])],
+                        "question_type": question_type,
+                        "documents": []
+                    }
+                    yield error_state, {"langgraph_node": "generate_counseling"}
                 
         except Exception as e:
-            print(f"워크플로우 스트리밍 중 오류 발생: {str(e)}")
-            # 예외 발생 시 에러 메시지와 빈 문서 목록 반환
-            final_state = {
+            print(f"전체 워크플로우 실행 중 오류 발생: {str(e)}")
+            error_state = {
                 "messages": [
                     HumanMessage(content=message),
-                    AIMessage(content=f"오류가 발생했습니다: {str(e)}", tags=["final"])
+                    AIMessage(content="죄송합니다. 응답을 생성하는 중에 오류가 발생했습니다.", tags=["final"])
                 ],
-                "documents": [],
-                "question_type": question_type if 'question_type' in locals() else "academic"
+                "question_type": "academic" if not 'question_type' in locals() else question_type,
+                "documents": []
             }
-            # 에러 상태 반환
-            yield final_state, {"langgraph_node": "unknown"} 
+            yield error_state, {"langgraph_node": "error"} 
