@@ -13,7 +13,7 @@ from src.visualization.graph_visualizer import visualize_langgraph_workflow, vis
 # Configuration
 CSV_PATH = "data/cleaned_pubmed_papers.csv"
 VECTOR_STORE_PATH = "vectors/pubmed_vectors"
-LLM_MODEL = "gemma3:4b"
+LLM_MODEL = "gemma3-q8"
 OLLAMA_BASE_URL = "http://localhost:11434"
 
 # 다른 포트로 실행하려면 환경 변수 설정: CHAINLIT_PORT=8001 chainlit run app.py
