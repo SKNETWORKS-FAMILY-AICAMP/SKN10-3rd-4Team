@@ -53,14 +53,19 @@
 - 개발 환경: ![Cursor](https://img.shields.io/badge/-Cursor-1A1A1A?logo=cursor&logoColor=white)  ![Colab](https://img.shields.io/badge/-Google%20Colab-F9AB00?logo=googlecolab&logoColor=white)  ![RunPod](https://img.shields.io/badge/-RunPod-5F43DC?logo=cloud&logoColor=white)
 - 협업 툴 : ![GitHub](https://img.shields.io/badge/-GitHub-181717?logo=github&logoColor=white)  ![Discord](https://img.shields.io/badge/-Discord-5865F2?logo=discord&logoColor=white)
 - UI : ![Chainlit](https://img.shields.io/badge/-Chainlit-4385F5?logo=lightning&logoColor=white)
+- Vector DB : [![FAISS](https://img.shields.io/badge/-FAISS-009688?logo=ApacheSpark&logoColor=white)](https://github.com/facebookresearch/faiss)
+
+## 4. 📂 프로젝트 구조
 
 
-## 4. 시스템 아키텍쳐
-<img src="images/chatbot_Flowchart.png" alt="우울증 통계" width="600" height="300"/>
+
+
+## 5. 시스템 아키텍쳐
+<img src="images/FlowChart.png" alt="우울증 통계" width="600" height="300"/>
 
 <br>
 
-## 5. 데이터 소스
+## 6. 데이터 소스
 ### 🎥 유튜브
 -  [명쾌한 최원장](https://www.youtube.com/@clearheal)
 -  [14F 일사에프](https://www.youtube.com/@14FMBC)
@@ -71,3 +76,20 @@
 
 ### 📄 논문 데이터
 -  [PubMed](https://pubmed.ncbi.nlm.nih.gov/)
+
+<br>
+
+## 7. 데이터 전처리
+-  무의미한 텍스트 ([웃음],[박수],으 등등) 제거
+
+
+## 
+
+
+
+
+## 🎧 회고록
+- 김현수: 
+- 남궁승원: 
+- 조현정:
+- 황인호
