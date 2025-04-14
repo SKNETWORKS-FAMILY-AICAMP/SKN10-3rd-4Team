@@ -8,33 +8,28 @@ from mental_agent_system.utils.faiss_utils import load_faiss_from_korean_path
 
 class PsychiatricDocAgent:
     def __init__(self, temperature: float = 0.7):
-        self.template = """당신은 정신건강의학과 전문의입니다. 과학적 근거를 바탕으로 전문적이고 명확한 의견을 제시해주세요.
+        self.template = """당신은 정신의학 전문가입니다. 제공된 PubMed 논문들 중에서 질문과 가장 관련성이 높은 논문들만 선별하여 답변해 주세요.
 
-주요 역할:
-1. 증상에 대한 전문적 분석과 평가
-2. 과학적 근거 기반의 치료 방향 제시
-3. 약물치료와 관련된 전문적 조언
-4. 정신건강 관련 의학적 지식 전달
-5. 필요한 경우 추가 검사나 치료 방향 제안
+        질문: {question}
 
-상담 스타일:
-- 전문적이고 객관적인 어조 유지
-- 의학적 용어를 알기 쉽게 설명
-- 명확하고 구체적인 치료 계획 제시
-- 과학적 근거와 연구 결과 인용
-- 환자의 상태에 따른 맞춤형 조언
+        참고할 논문 내용:
+        {context}
 
-주의사항:
-- 의학적 정확성 유지
-- 환자가 이해하기 쉬운 설명 제공
-- 필요한 경우 다른 전문가와의 협진 제안
-- 응급상황 시 적절한 대처방안 안내
+        답변 작성 과정:
+        1. 제공된 논문들 중 질문과 직접적인 관련이 있는 논문들만 선별하세요
+        2. 관련성이 낮거나 질문에 도움이 되지 않는 논문은 분석에서 제외하세요
+        3. 선별한 논문들의 정보를 종합하여 하나의 일관된 답변을 작성하세요
 
-참고할 내용: {context}
+        답변 작성 지침:
+        1. 답변 시작 부분에 어떤 논문들이 가장 관련성이 높았는지 간략히 언급하세요
+        2. 선별한 논문들 간의 공통점과 차이점을 파악하여 분석하세요
+        3. 각 논문의 핵심 발견과 결론을 통합적으로 설명하세요
+        4. 답변 내용을 명확하게 설명하고 논리적으로 구성하세요
+        5. 선별한 논문 정보를 반드시 언급하세요 (제목, 저널)
+        6. 정보가 불충분하거나 논문 간 상충되는 내용이 있는 경우 정직하게 인정하세요
 
-환자의 질문: {question}
-
-위 내용을 참고하여 정신과 전문의로서 전문적이고 명확한 답변을 제공해주세요."""
+        한국어로 명확하고 전문적인 답변을 제공해 주세요.
+"""
         
         self.prompt = ChatPromptTemplate.from_template(self.template)
         self.llm = ChatOpenAI(temperature=temperature)
@@ -47,7 +42,11 @@ class PsychiatricDocAgent:
         self.db = load_faiss_from_korean_path(vectorstore_path)
     
     def run(self, state):
-        query = state["messages"][-1].content
+        # 메시지가 문자열인 경우와 Message 객체인 경우를 모두 처리
+        if isinstance(state["messages"][-1], str):
+            query = state["messages"][-1]
+        else:
+            query = state["messages"][-1].content
         
         # 관련 문서 검색
         docs = self.db.similarity_search(query)

@@ -46,7 +46,11 @@ class CounselorAgent:
         self.db = load_faiss_from_korean_path(vectorstore_path)
     
     def run(self, state):
-        query = state["messages"][-1].content
+        # 메시지가 문자열인 경우와 Message 객체인 경우를 모두 처리
+        if isinstance(state["messages"][-1], str):
+            query = state["messages"][-1]
+        else:
+            query = state["messages"][-1].content
         
         # 관련 문서 검색
         docs = self.db.similarity_search(query)
