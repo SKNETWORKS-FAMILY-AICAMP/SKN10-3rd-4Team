@@ -117,8 +117,43 @@ async def on_message(message: cl.Message):
     
     # Custom streaming callback handler
     class ChainlitStreamingHandler(BaseCallbackHandler):
+        def __init__(self, message):
+            self.message = message
+            self.token_buffer = ""
+            self.is_active = True
+            print("스트리밍 핸들러 초기화됨")
+        
+        def on_llm_start(self, serialized, prompts, **kwargs):
+            print(f"LLM 스트리밍 시작: {len(prompts)} 프롬프트 처리 중")
+        
         def on_llm_new_token(self, token: str, **kwargs):
-            cl.run_sync(msg.stream_token(token))
+            if not self.is_active:
+                return
+                
+            try:
+                if token:
+                    #print(f"토큰 수신: {token[:10]}{'...' if len(token) > 10 else ''}")
+                    self.token_buffer += token
+                    # 버퍼가 충분히 찼거나 특정 문자가 있으면 즉시 전송
+                    if len(self.token_buffer) > 10 or any(c in self.token_buffer for c in ['\n', '.', '!', '?']):
+                        cl.run_sync(self.message.stream_token(self.token_buffer))
+                        self.token_buffer = ""
+            except Exception as e:
+                print(f"스트리밍 토큰 처리 중 오류: {str(e)}")
+                self.is_active = False
+        
+        def on_llm_end(self, response, **kwargs):
+            # 버퍼에 남은 토큰 모두 전송
+            if self.token_buffer:
+                try:
+                    cl.run_sync(self.message.stream_token(self.token_buffer))
+                except Exception as e:
+                    print(f"마지막 토큰 전송 중 오류: {str(e)}")
+            print("LLM 스트리밍 완료")
+        
+        def on_llm_error(self, error, **kwargs):
+            print(f"LLM 오류 발생: {str(error)}")
+            self.is_active = False
     
     try:
         # 워크플로우 실행 (스트리밍 처리)
@@ -127,10 +162,13 @@ async def on_message(message: cl.Message):
         question_type = "academic"  # 기본값
         workflow_run_id = None      # 워크플로우 실행 ID 추적용
         
+        # 스트리밍 핸들러 생성
+        streaming_handler = ChainlitStreamingHandler(msg)
+        
         # 스트리밍 모드로 워크플로우 실행
         for state, metadata in workflow_manager.stream_process(
             question, 
-            callbacks=[ChainlitStreamingHandler()]
+            callbacks=[streaming_handler]
         ):
             # 노드 이름
             node = metadata.get("langgraph_node", "unknown")

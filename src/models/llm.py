@@ -22,8 +22,17 @@ class LLMManager:
         prompt = self.create_prompt(question, context)
         # Pass callbacks for streaming if provided
         if self.streaming and callbacks:
-            response = self.llm.generate([prompt], callbacks=callbacks)
-            return response.generations[0][0].text
+            try:
+                # 직접 콜백을 사용한 스트리밍 처리
+                print("스트리밍 모드로 학술 응답 생성 중...")
+                # invoke() 방식으로 호출 (올바른 콜백 인자 전달)
+                response = self.llm.invoke(prompt, config={"callbacks": callbacks})
+                return response
+            except Exception as e:
+                print(f"스트리밍 응답 생성 중 오류: {str(e)}")
+                # 오류 발생 시 비스트리밍 모드로 폴백
+                response = self.llm(prompt)
+                return response
         else:
             response = self.llm(prompt)
             return response
@@ -80,8 +89,17 @@ class LLMManager:
         
         # Pass callbacks for streaming if provided
         if self.streaming and callbacks:
-            response = self.llm.generate([prompt], callbacks=callbacks)
-            return response.generations[0][0].text
+            try:
+                # 직접 콜백을 사용한 스트리밍 처리
+                print("스트리밍 모드로 상담 응답 생성 중...")
+                # invoke() 방식으로 호출 (올바른 콜백 인자 전달)
+                response = self.llm.invoke(prompt, config={"callbacks": callbacks})
+                return response
+            except Exception as e:
+                print(f"스트리밍 응답 생성 중 오류: {str(e)}")
+                # 오류 발생 시 비스트리밍 모드로 폴백
+                response = self.llm(prompt)
+                return response
         else:
             response = self.llm(prompt)
             return response

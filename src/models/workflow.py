@@ -19,6 +19,7 @@ class WorkflowManager:
         self.llm_manager = llm_manager
         self.vector_store = vector_store
         self.graph = self._create_workflow()
+        self.current_config = None  # 현재 실행 중인 config를 저장하기 위한 변수
     
     def _create_workflow(self):
         """워크플로우 생성"""
@@ -30,13 +31,16 @@ class WorkflowManager:
             question_type: str = "academic" # 기본값은 학술 질문
             run_id: str = None  # LangSmith 추적을 위한 run_id 필드 추가
         
+        # 현재 클래스 인스턴스에 대한 참조 저장
+        workflow_manager = self
+        
         # 질문 분류 노드
         def classify_question(state: State) -> State:
             """질문 유형 분류"""
             question = state["messages"][-1].content
             try:
                 # 도구 호출 대신 프롬프트 기반으로 질문 분류
-                question_type = self.llm_manager.classify_question(question)
+                question_type = workflow_manager.llm_manager.classify_question(question)
                 print(f"질문 유형: {question_type}")
                 return {"messages": state["messages"], "question_type": question_type, "run_id": state.get("run_id")}
             except Exception as e:
@@ -58,7 +62,7 @@ class WorkflowManager:
             """관련 문서 검색"""
             question = state["messages"][-1].content
             try:
-                docs = self.vector_store.similarity_search(question, k=3)
+                docs = workflow_manager.vector_store.similarity_search(question, k=3)
                 print(f"{len(docs)}개의 관련 문서를 검색했습니다.")
                 return {
                     "messages": state["messages"], 
@@ -86,8 +90,14 @@ class WorkflowManager:
                     response = "죄송합니다. 질문과 관련된 정보를 찾을 수 없습니다. 다른 질문을 해주시겠어요?"
                 else:
                     context = "\n\n".join([doc.page_content for doc in documents])
-                    # llm_manager의 generate_response 메서드는 일반 텍스트 응답을 반환합니다
-                    response = self.llm_manager.generate_response(question, context)
+                    # 스트리밍 콜백 확인 및 전달 (워크플로우 매니저에서 config 가져오기)
+                    callbacks = None
+                    if workflow_manager.current_config and "callbacks" in workflow_manager.current_config:
+                        callbacks = workflow_manager.current_config.get("callbacks")
+                        print(f"학술 응답 생성에 콜백 전달: {callbacks}")
+                    
+                    # llm_manager의 generate_response 메서드 호출 (콜백 전달)
+                    response = workflow_manager.llm_manager.generate_response(question, context, callbacks=callbacks)
                 
                 return {
                     "messages": state["messages"] + [AIMessage(content=response, tags=["final"])], 
@@ -111,8 +121,14 @@ class WorkflowManager:
             question = state["messages"][-1].content
             
             try:
+                # 스트리밍 콜백 확인 및 전달 (워크플로우 매니저에서 config 가져오기)
+                callbacks = None
+                if workflow_manager.current_config and "callbacks" in workflow_manager.current_config:
+                    callbacks = workflow_manager.current_config.get("callbacks")
+                    print(f"상담 응답 생성에 콜백 전달: {callbacks}")
+                
                 # 상담 응답 생성 (문서 검색 없이)
-                response = self.llm_manager.generate_counseling_response(question)
+                response = workflow_manager.llm_manager.generate_counseling_response(question, callbacks=callbacks)
                 
                 return {
                     "messages": state["messages"] + [AIMessage(content=response, tags=["final"])], 
@@ -217,6 +233,9 @@ class WorkflowManager:
         if callbacks:
             config["callbacks"] = callbacks
             
+        # 현재 config 저장 (노드에서 접근할 수 있도록)
+        self.current_config = config
+        
         # LangSmith 통합을 위한 설정
         # 모든 단계가 동일한 run_id를 공유하도록 설정
         if "metadata" not in config:
