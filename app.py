@@ -12,8 +12,10 @@ from src.models.llm import LLMManager
 # Configuration
 CSV_PATH = "data/cleaned_pubmed_papers.csv"
 VECTOR_STORE_PATH = "vectors/pubmed_vectors"
-LLM_MODEL = "gemma3-q8"
+LLM_MODEL = "gemma3:4b"
 OLLAMA_BASE_URL = "http://localhost:11434"
+
+# 다른 포트로 실행하려면 환경 변수 설정: CHAINLIT_PORT=8001 chainlit run app.py
 
 @cl.on_chat_start
 async def on_chat_start():
@@ -107,7 +109,7 @@ async def on_message(message: cl.Message):
             def on_llm_new_token(self, token: str, **kwargs):
                 cl.run_sync(msg.stream_token(token))
         
-        # First approach: Get context from documents for direct LLM response
+        # Get context from documents for direct LLM response
         context = "\n\n".join([doc.page_content for doc in docs])
         
         with cl.Step("응답 생성 중...") as step:
@@ -118,19 +120,22 @@ async def on_message(message: cl.Message):
                 {"callbacks": [ChainlitStreamingHandler()]}
             )
             
-            # If streaming didn't work, at least show the final result
+            # If streaming didn't work, update the message with final result
             if not msg.content:
-                await msg.update(content=response["result"])
+                msg.content = response["result"]
+                await msg.update()
             
             step.output = "응답 생성 완료"
     except Exception as e:
         await cl.Message(content=f"오류가 발생했습니다: {str(e)}").send()
-        await msg.update(content="응답 생성 중 오류가 발생했습니다.")
+        msg.content = "응답 생성 중 오류가 발생했습니다."
+        await msg.update()
         return
     
     # Update message if it's still empty
     if not msg.content:
-        await msg.update(content="응답 생성이 완료되었지만 내용이 표시되지 않습니다. 다시 시도해주세요.")
+        msg.content = "응답 생성이 완료되었지만 내용이 표시되지 않습니다. 다시 시도해주세요."
+        await msg.update()
     
     # Display source documents
     sources_text = "### 참고 논문\n\n"
