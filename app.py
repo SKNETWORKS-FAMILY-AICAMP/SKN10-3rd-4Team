@@ -2,6 +2,7 @@ import os
 import chainlit as cl
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain_core.messages import HumanMessage
+import logging
 
 # Import from modules
 from src.utils.data_loader import load_data
@@ -15,6 +16,9 @@ CSV_PATH = "data/cleaned_pubmed_papers.csv"
 VECTOR_STORE_PATH = "vectors/pubmed_vectors"
 LLM_MODEL = "gemma3:4b"
 OLLAMA_BASE_URL = "http://localhost:11434"
+
+# 로깅 레벨 설정 - 토큰 스트리밍 중 과도한 로깅 방지
+cl.logger.setLevel(logging.INFO)
 
 # 다른 포트로 실행하려면 환경 변수 설정: CHAINLIT_PORT=8001 chainlit run app.py
 
@@ -135,6 +139,7 @@ async def on_message(message: cl.Message):
         classify_done = False
         retrieve_done = False
         generation_started = False
+        is_token_streaming = False
         
         # 스트리밍 모드로 워크플로우 실행
         for state, metadata in workflow_manager.stream_process(
@@ -143,8 +148,12 @@ async def on_message(message: cl.Message):
         ):
             # 현재 노드 이름
             current_node = metadata.get("langgraph_node", "unknown")
-            cl.logger.info(f"현재 노드: {current_node}")
             
+            # 토큰 스트리밍 중에는 로깅 최소화
+            if streaming_handler.streaming_started and is_token_streaming:
+                # 토큰 스트리밍 상태 유지
+                continue
+                
             # 새로운 노드로 전환될 때 상태 업데이트
             if last_node != current_node:
                 cl.logger.info(f"노드 전환: {last_node} -> {current_node}")
@@ -167,15 +176,21 @@ async def on_message(message: cl.Message):
                 # 응답 생성 시작
                 elif (current_node == "generate_academic" or current_node == "generate_counseling") and not generation_started:
                     generation_started = True
+                    is_token_streaming = True
                     cl.logger.info(f"응답 생성 시작: {current_node}")
             
-            # 상태에서 응답 메시지 확인
+            # 상태에서 응답 메시지 확인 - 최종 응답 확인
             if isinstance(state, dict) and "messages" in state:
                 for msg_item in state["messages"]:
                     if not isinstance(msg_item, HumanMessage) and hasattr(msg_item, "content"):
                         message_content = msg_item.content
                         # 태그에 final이 있는지 확인
                         is_final = hasattr(msg_item, "tags") and "final" in msg_item.tags
+                        
+                        # 최종 응답이면 토큰 스트리밍 종료 표시
+                        if is_final:
+                            is_token_streaming = False
+                            cl.logger.info("최종 응답 수신됨")
                         
                         # 새 응답 내용이 있는 경우
                         if message_content and message_content != response_content:
@@ -187,10 +202,6 @@ async def on_message(message: cl.Message):
                                 cl.logger.info("토큰 스트리밍이 시작되지 않아 전체 응답 업데이트")
                                 msg.content = message_content
                                 await msg.update()
-                            
-                            # 최종 응답이면 기록
-                            if is_final:
-                                cl.logger.info("최종 응답 수신됨")
         
         # 토큰 스트리밍이 성공적으로 이루어졌는지 확인
         if streaming_handler.streaming_started:

@@ -241,48 +241,31 @@ class WorkflowManager:
                         
                         # 학술 응답 토큰 단위 스트리밍
                         try:
-                            # 직접 토큰 단위 스트리밍으로 응답 생성 (콜백으로 토큰 전달)
-                            # 응답 버퍼 (토큰이 추가될 때마다 업데이트)
+                            # 상태 기록 변수
                             response_buffer = ""
+                            last_yield_length = 0
+                            min_new_tokens = 10
                             
-                            # 토큰 콜백 정의
-                            class TokenCallback:
-                                def __init__(self, state, node):
-                                    self.state = state
-                                    self.node = node
-                                    
-                                def on_llm_new_token(self, token, **kwargs):
-                                    nonlocal response_buffer
-                                    response_buffer += token
-                                    
-                                    # 토큰마다 현재 상태 복사 및 메시지 업데이트
-                                    token_state = self.state.copy()
+                            # 토큰 단위 응답 스트리밍 시작
+                            yield search_state, {"langgraph_node": "generate_academic", "streaming_started": True}
+                            
+                            # 토큰 단위 응답 생성
+                            for token in self.llm_manager.stream_response_tokens(question, context, callbacks):
+                                # 토큰 누적
+                                response_buffer += token
+                                
+                                # 일정 토큰 수 이상 모이면 상태 업데이트 (과도한 yield 방지)
+                                if len(response_buffer) - last_yield_length >= min_new_tokens:
+                                    token_state = search_state.copy()
                                     token_state["messages"] = token_state["messages"] + [
                                         AIMessage(content=response_buffer, tags=["streaming"])
                                     ]
                                     
                                     # 토큰 단위로 상태 반환
-                                    return token_state, {"langgraph_node": self.node}
-                            
-                            # 토큰 콜백 인스턴스 생성
-                            token_callback = TokenCallback(search_state, "generate_academic")
-                            
-                            # 오리지널 콜백이 있으면 추가
-                            streaming_callbacks = []
-                            if callbacks:
-                                streaming_callbacks.extend(callbacks)
-                            
-                            # 토큰 단위 응답 생성
-                            for token in self.llm_manager.stream_response_tokens(question, context, streaming_callbacks):
-                                # 토큰 콜백 호출
-                                token_state = search_state.copy()
-                                response_buffer += token
-                                token_state["messages"] = token_state["messages"] + [
-                                    AIMessage(content=response_buffer, tags=["streaming"])
-                                ]
-                                
-                                # 토큰 단위로 상태 반환
-                                yield token_state, {"langgraph_node": "generate_academic"}
+                                    yield token_state, {"langgraph_node": "generate_academic", "streaming": True}
+                                    
+                                    # 마지막 상태 전송 길이 업데이트
+                                    last_yield_length = len(response_buffer)
                             
                             # 최종 응답 상태
                             final_state = search_state.copy()
@@ -291,7 +274,7 @@ class WorkflowManager:
                             ]
                             
                             # 최종 상태 반환
-                            yield final_state, {"langgraph_node": "generate_academic"}
+                            yield final_state, {"langgraph_node": "generate_academic", "final": True}
                             
                         except Exception as e:
                             print(f"학술 응답 생성 스트리밍 중 오류: {str(e)}")
@@ -301,7 +284,7 @@ class WorkflowManager:
                                 "question_type": question_type,
                                 "documents": documents
                             }
-                            yield error_state, {"langgraph_node": "generate_academic"}
+                            yield error_state, {"langgraph_node": "generate_academic", "error": True}
                     else:
                         # 문서가 없는 경우
                         no_docs_response = "죄송합니다. 질문과 관련된 정보를 찾을 수 없습니다. 다른 질문을 해주시겠어요?"
@@ -310,7 +293,7 @@ class WorkflowManager:
                             "question_type": question_type,
                             "documents": []
                         }
-                        yield no_docs_state, {"langgraph_node": "generate_academic"}
+                        yield no_docs_state, {"langgraph_node": "generate_academic", "no_documents": True}
                         
                 except Exception as e:
                     print(f"문서 검색 중 오류: {str(e)}")
@@ -320,27 +303,38 @@ class WorkflowManager:
                         "question_type": question_type,
                         "documents": []
                     }
-                    yield error_state, {"langgraph_node": "retrieve"}
+                    yield error_state, {"langgraph_node": "retrieve", "error": True}
                     
             else:  # 상담 질문
                 print("2단계: 상담 질문 - 응답 생성 (토큰 스트리밍)")
                 
                 try:
                     # 상담 응답 토큰 단위 스트리밍
-                    # 응답 버퍼 (토큰이 추가될 때마다 업데이트)
+                    # 상태 기록 변수
                     response_buffer = ""
+                    last_yield_length = 0
+                    min_new_tokens = 10
+                    
+                    # 토큰 단위 응답 스트리밍 시작
+                    yield first_state, {"langgraph_node": "generate_counseling", "streaming_started": True}
                     
                     # 토큰 단위 상담 응답 생성
                     for token in self.llm_manager.stream_counseling_tokens(question, callbacks):
-                        # 토큰마다 상태 업데이트
-                        token_state = first_state.copy()
+                        # 토큰 누적
                         response_buffer += token
-                        token_state["messages"] = token_state["messages"] + [
-                            AIMessage(content=response_buffer, tags=["streaming"])
-                        ]
                         
-                        # 토큰 단위로 상태 반환
-                        yield token_state, {"langgraph_node": "generate_counseling"}
+                        # 일정 토큰 수 이상 모이면 상태 업데이트 (과도한 yield 방지)
+                        if len(response_buffer) - last_yield_length >= min_new_tokens:
+                            token_state = first_state.copy()
+                            token_state["messages"] = token_state["messages"] + [
+                                AIMessage(content=response_buffer, tags=["streaming"])
+                            ]
+                            
+                            # 토큰 단위로 상태 반환
+                            yield token_state, {"langgraph_node": "generate_counseling", "streaming": True}
+                            
+                            # 마지막 상태 전송 길이 업데이트
+                            last_yield_length = len(response_buffer)
                     
                     # 최종 응답 상태
                     final_state = first_state.copy()
@@ -349,7 +343,7 @@ class WorkflowManager:
                     ]
                     
                     # 최종 상태 반환
-                    yield final_state, {"langgraph_node": "generate_counseling"}
+                    yield final_state, {"langgraph_node": "generate_counseling", "final": True}
                     
                 except Exception as e:
                     print(f"상담 응답 생성 스트리밍 중 오류: {str(e)}")
@@ -359,7 +353,7 @@ class WorkflowManager:
                         "question_type": question_type,
                         "documents": []
                     }
-                    yield error_state, {"langgraph_node": "generate_counseling"}
+                    yield error_state, {"langgraph_node": "generate_counseling", "error": True}
                 
         except Exception as e:
             print(f"전체 워크플로우 실행 중 오류 발생: {str(e)}")
@@ -371,4 +365,4 @@ class WorkflowManager:
                 "question_type": "academic" if not 'question_type' in locals() else question_type,
                 "documents": []
             }
-            yield error_state, {"langgraph_node": "error"} 
+            yield error_state, {"langgraph_node": "error", "workflow_error": True}
