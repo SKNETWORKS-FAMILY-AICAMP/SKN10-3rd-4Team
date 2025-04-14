@@ -25,8 +25,8 @@
 - 정확하고 신뢰할 수 있는 정보 제공은 우울증 인식 개선과 예방에 중요한 역할을 합니다.
 <br>
 
-<img src="images/depression-stats.png" alt="우울증 통계" width="600" height="300"/>
-<img src="images/depression_ver2.png" alt="우울증 통계" width="600" height="300"/>
+<img src="images/depression-stats.png" alt="우울증 통계" width="800" height="500"/>
+<img src="images/depression_ver2.png" alt="우울증 통계" width="800" height="500"/>
 
 <br><br>
 **출처**  
