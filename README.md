@@ -57,7 +57,34 @@
 
 ## 4. 📂 프로젝트 구조
 
-
+├── app.py                  # Chainlit 애플리케이션 진입점
+├── src                     # 소스 코드
+│   ├── rag                 # RAG 모듈
+│   │   ├── __init__.py     # RAG 패키지 초기화
+│   │   ├── embeddings.py   # 임베딩 로직
+│   │   ├── vectorstore.py  # 벡터 저장소 관리
+│   │   └── prompts.py      # 프롬프트 템플릿
+│   ├── models              # 모델 모듈
+│   │   ├── __init__.py     # 모델 패키지 초기화
+│   │   ├── llm.py          # LLM 로직
+│   │   └── workflow.py     # LangGraph 워크플로우 관리
+│   ├── visualization       # 시각화 모듈
+│   │   ├── __init__.py     # 시각화 패키지 초기화
+│   │   └── graph_visualizer.py # 워크플로우 시각화
+│   └── utils               # 유틸리티 함수
+│       ├── __init__.py     # 유틸리티 패키지 초기화
+│       └── data_loader.py  # 데이터 로딩 및 처리
+├── data                    # 데이터 파일 디렉토리
+│   └── cleaned_pubmed_papers.csv # 정제된 PubMed 논문 데이터
+├── vectors                 # 벡터 파일 디렉토리
+│   └── pubmed_vectors      # PubMed 논문 벡터
+├── visualization           # 시각화 결과물 디렉토리
+│   └── simple_langgraph_workflow.png # 워크플로우 다이어그램
+├── chainlit.md            # Chainlit 애플리케이션 문서
+├── .env.example            # 환경 변수 예제
+├── requirements.txt        # 프로젝트 의존성
+├── config.json             # 설정
+└── README.md               # 프로젝트 문서
 
 
 ## 5. 시스템 아키텍쳐
