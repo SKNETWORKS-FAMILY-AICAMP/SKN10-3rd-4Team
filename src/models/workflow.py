@@ -19,6 +19,7 @@ class WorkflowManager:
         self.llm_manager = llm_manager
         self.vector_store = vector_store
         self.graph = self._create_workflow()
+        self.current_config = None  # 현재 실행 중인 config를 저장하기 위한 변수
     
     def _create_workflow(self):
         """워크플로우 생성"""
@@ -28,6 +29,10 @@ class WorkflowManager:
             messages: List[Any]
             documents: List[Any] = []
             question_type: str = "academic" # 기본값은 학술 질문
+            run_id: str = None  # LangSmith 추적을 위한 run_id 필드 추가
+        
+        # 현재 클래스 인스턴스에 대한 참조 저장
+        workflow_manager = self
         
         # 질문 분류 노드
         def classify_question(state: State) -> State:
@@ -35,13 +40,13 @@ class WorkflowManager:
             question = state["messages"][-1].content
             try:
                 # 도구 호출 대신 프롬프트 기반으로 질문 분류
-                question_type = self.llm_manager.classify_question(question)
+                question_type = workflow_manager.llm_manager.classify_question(question)
                 print(f"질문 유형: {question_type}")
-                return {"messages": state["messages"], "question_type": question_type}
+                return {"messages": state["messages"], "question_type": question_type, "run_id": state.get("run_id")}
             except Exception as e:
                 print(f"질문 분류 중 오류 발생: {str(e)}")
                 # 기본값으로 학술 질문으로 처리
-                return {"messages": state["messages"], "question_type": "academic"}
+                return {"messages": state["messages"], "question_type": "academic", "run_id": state.get("run_id")}
                 
         # 조건부 라우팅
         def route_by_type(state: State) -> str:
@@ -57,12 +62,22 @@ class WorkflowManager:
             """관련 문서 검색"""
             question = state["messages"][-1].content
             try:
-                docs = self.vector_store.similarity_search(question, k=3)
+                docs = workflow_manager.vector_store.similarity_search(question, k=3)
                 print(f"{len(docs)}개의 관련 문서를 검색했습니다.")
-                return {"messages": state["messages"], "documents": docs, "question_type": state.get("question_type")}
+                return {
+                    "messages": state["messages"], 
+                    "documents": docs, 
+                    "question_type": state.get("question_type"),
+                    "run_id": state.get("run_id")
+                }
             except Exception as e:
                 print(f"문서 검색 중 오류 발생: {str(e)}")
-                return {"messages": state["messages"], "documents": [], "question_type": state.get("question_type")}
+                return {
+                    "messages": state["messages"], 
+                    "documents": [], 
+                    "question_type": state.get("question_type"),
+                    "run_id": state.get("run_id")
+                }
         
         # 학술 응답 생성 노드
         def generate_academic_response(state: State) -> State:
@@ -75,13 +90,20 @@ class WorkflowManager:
                     response = "죄송합니다. 질문과 관련된 정보를 찾을 수 없습니다. 다른 질문을 해주시겠어요?"
                 else:
                     context = "\n\n".join([doc.page_content for doc in documents])
-                    # llm_manager의 generate_response 메서드는 일반 텍스트 응답을 반환합니다
-                    response = self.llm_manager.generate_response(question, context)
+                    # 스트리밍 콜백 확인 및 전달 (워크플로우 매니저에서 config 가져오기)
+                    callbacks = None
+                    if workflow_manager.current_config and "callbacks" in workflow_manager.current_config:
+                        callbacks = workflow_manager.current_config.get("callbacks")
+                        print(f"학술 응답 생성에 콜백 전달: {callbacks}")
+                    
+                    # llm_manager의 generate_response 메서드 호출 (콜백 전달)
+                    response = workflow_manager.llm_manager.generate_response(question, context, callbacks=callbacks)
                 
                 return {
                     "messages": state["messages"] + [AIMessage(content=response, tags=["final"])], 
                     "documents": documents,
-                    "question_type": state.get("question_type")
+                    "question_type": state.get("question_type"),
+                    "run_id": state.get("run_id")
                 }
             except Exception as e:
                 print(f"학술 응답 생성 중 오류 발생: {str(e)}")
@@ -89,7 +111,8 @@ class WorkflowManager:
                 return {
                     "messages": state["messages"] + [AIMessage(content=error_message, tags=["final"])], 
                     "documents": documents,
-                    "question_type": state.get("question_type")
+                    "question_type": state.get("question_type"),
+                    "run_id": state.get("run_id")
                 }
         
         # 상담 응답 생성 노드
@@ -98,13 +121,20 @@ class WorkflowManager:
             question = state["messages"][-1].content
             
             try:
+                # 스트리밍 콜백 확인 및 전달 (워크플로우 매니저에서 config 가져오기)
+                callbacks = None
+                if workflow_manager.current_config and "callbacks" in workflow_manager.current_config:
+                    callbacks = workflow_manager.current_config.get("callbacks")
+                    print(f"상담 응답 생성에 콜백 전달: {callbacks}")
+                
                 # 상담 응답 생성 (문서 검색 없이)
-                response = self.llm_manager.generate_counseling_response(question)
+                response = workflow_manager.llm_manager.generate_counseling_response(question, callbacks=callbacks)
                 
                 return {
                     "messages": state["messages"] + [AIMessage(content=response, tags=["final"])], 
                     "documents": [],  # 상담 응답은 문서를 참조하지 않음
-                    "question_type": state.get("question_type")
+                    "question_type": state.get("question_type"),
+                    "run_id": state.get("run_id")
                 }
             except Exception as e:
                 print(f"상담 응답 생성 중 오류 발생: {str(e)}")
@@ -112,7 +142,8 @@ class WorkflowManager:
                 return {
                     "messages": state["messages"] + [AIMessage(content=error_message, tags=["final"])], 
                     "documents": [],
-                    "question_type": state.get("question_type")
+                    "question_type": state.get("question_type"),
+                    "run_id": state.get("run_id")
                 }
         
         # 그래프 생성
@@ -201,6 +232,20 @@ class WorkflowManager:
         # 콜백이 있으면 설정에 추가
         if callbacks:
             config["callbacks"] = callbacks
+            
+        # 현재 config 저장 (노드에서 접근할 수 있도록)
+        self.current_config = config
+        
+        # LangSmith 통합을 위한 설정
+        # 모든 단계가 동일한 run_id를 공유하도록 설정
+        if "metadata" not in config:
+            config["metadata"] = {}
+        
+        # 고유 런 ID 생성 (모든 단계가 이 ID를 공유)
+        import uuid
+        run_id = str(uuid.uuid4())
+        config["metadata"]["run_id"] = run_id
+        config["metadata"]["run_type"] = "workflow"
                 
         # 초기 상태 설정
         initial_state = {
@@ -215,6 +260,10 @@ class WorkflowManager:
             config_copy = config.copy()
             config_copy["configurable"] = {"thread_id": message}  # 스레드 ID 정의하여 캐싱
             
+            # LangSmith 추적에 필요한 name 및 run_type 추가
+            config_copy["name"] = "Depression-Chatbot-Workflow"
+            config_copy["tags"] = ["workflow_execution"]
+            
             print("전체 워크플로우 실행 중...")
             full_result = self.graph.invoke(
                 initial_state,
@@ -225,13 +274,35 @@ class WorkflowManager:
             question_type = full_result.get("question_type", "academic")
             documents = full_result.get("documents", [])
             
+            # run_id가 있으면 활용
+            run_id_from_result = full_result.get("run_id")
+            if run_id_from_result:
+                run_id = run_id_from_result
+                print(f"워크플로우 결과에서 run_id 가져옴: {run_id}")
+            
             print(f"전체 실행 후: 질문 유형: {question_type}, 문서 수: {len(documents)}")
             
             # 2. 스트리밍 모드로 다시 실행 (노드 진행 과정과 응답 생성 스트리밍 위해)
             config["configurable"] = {"thread_id": message}  # 같은 스레드 ID로 캐시 활용
             
+            # 동일한 run_id 사용, 스트리밍에 name 추가
+            config["name"] = "Depression-Chatbot-Stream"
+            config["tags"] = ["workflow_stream"]
+            
+            # 메타데이터에 단계 정보 추가
+            config["metadata"]["parent_run_id"] = run_id
+            
+            # 각 단계를 같은 워크플로우의 일부로 식별하기 위한 메타데이터
+            config["metadata"]["workflow_id"] = run_id
+            
+            # 초기 상태에 run_id 포함
+            initial_state_with_run_id = {
+                "messages": [HumanMessage(content=message)],
+                "run_id": run_id
+            }
+            
             for output in self.graph.stream(
-                initial_state, 
+                initial_state_with_run_id, 
                 config=RunnableConfig(**config),
                 stream_mode="values"
             ):
@@ -279,8 +350,15 @@ class WorkflowManager:
                         
                     print(f"스트리밍 노드: {node_name}, 상태 키: {', '.join(state_delta.keys())}")
                     
+                    # 메타데이터에 단계 정보 추가
+                    metadata = {
+                        "langgraph_node": node_name,
+                        "workflow_run_id": run_id,  # 공통 워크플로우 ID
+                        "node_type": node_name      # 현재 노드 유형
+                    }
+                    
                     # 상태와 노드 이름 반환
-                    yield last_state, {"langgraph_node": node_name}
+                    yield last_state, metadata
                     
                 elif isinstance(output, tuple) and len(output) == 2:
                     # (node_name, state) 형식으로 반환된 경우
@@ -310,8 +388,15 @@ class WorkflowManager:
                         
                     print(f"스트리밍 노드: {node_name}, 상태 키: {', '.join(state_delta.keys())}")
                     
+                    # 메타데이터에 단계 정보 추가
+                    metadata = {
+                        "langgraph_node": node_name,
+                        "workflow_run_id": run_id,  # 공통 워크플로우 ID
+                        "node_type": node_name      # 현재 노드 유형
+                    }
+                    
                     # 상태와 노드 이름 반환
-                    yield last_state, {"langgraph_node": node_name}
+                    yield last_state, metadata
                     
                 else:
                     # 다른 형태로 반환된 경우
@@ -321,9 +406,15 @@ class WorkflowManager:
                         last_state = {"messages": initial_state["messages"], "question_type": question_type}
                         if documents:
                             last_state["documents"] = documents
+                    
+                    # 메타데이터에 정보 추가
+                    metadata = {
+                        "langgraph_node": "unknown",
+                        "workflow_run_id": run_id
+                    }
                             
                     # 상태와 기본 노드 이름 반환
-                    yield last_state, {"langgraph_node": "unknown"}
+                    yield last_state, metadata
                 
         except Exception as e:
             print(f"워크플로우 스트리밍 중 오류 발생: {str(e)}")
@@ -336,5 +427,13 @@ class WorkflowManager:
                 "documents": [],
                 "question_type": question_type if 'question_type' in locals() else "academic"
             }
+            
+            # 에러 메타데이터
+            error_metadata = {
+                "langgraph_node": "error",
+                "workflow_run_id": run_id if 'run_id' in locals() else str(uuid.uuid4()),
+                "error": str(e)
+            }
+            
             # 에러 상태 반환
-            yield final_state, {"langgraph_node": "unknown"} 
+            yield final_state, error_metadata 
