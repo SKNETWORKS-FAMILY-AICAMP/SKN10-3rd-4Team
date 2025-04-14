@@ -242,7 +242,9 @@ def create_prompt(self, question, context):
 <img src="images/test_researcher.png" width="600" height="300"/>
 <img src="images/test_researcher_terminal.png" width="600" height="300"/>
 
-
+<br><br>
+- LangGraph
+<img src="images/Langgraph.png" width="600" height="300"/>
 
 ## 10. 회고록
 - 김현수👑👍: 
