@@ -38,6 +38,42 @@ class WorkflowManager:
         else:
             print(f"Tavily API 키가 성공적으로 로드되었습니다. (길이: {len(self.tavily_api_key)}자)")
     
+    def visualize_workflow(self, output_path=None):
+        """
+        LangGraph의 내장 기능을 사용하여 워크플로우를 시각화합니다.
+        
+        Args:
+            output_path (str, optional): 저장할 이미지 파일 경로. 기본값은 None.
+            
+        Returns:
+            str: 저장된 이미지 파일 경로 또는 HTML 시각화 문자열
+        """
+        # 기본 저장 경로 설정
+        if output_path is None:
+            viz_dir = os.path.join(self.project_root, "visualization")
+            os.makedirs(viz_dir, exist_ok=True)
+            output_path = os.path.join(viz_dir, "langgraph_workflow.png")
+        
+        # 그래프 시각화 실행
+        try:
+            # PNG 형식으로 저장
+            self.graph.visualize(output_path)
+            print(f"LangGraph 워크플로우 이미지 저장됨: {output_path}")
+            return output_path
+        except Exception as e:
+            print(f"워크플로우 시각화 중 오류 발생: {str(e)}")
+            # 대체 형식 (HTML)으로 시도
+            try:
+                html_output = self.graph.get_graph().to_html()
+                html_path = output_path.replace(".png", ".html")
+                with open(html_path, "w", encoding="utf-8") as f:
+                    f.write(html_output)
+                print(f"HTML 형식으로 저장됨: {html_path}")
+                return html_path
+            except Exception as e2:
+                print(f"HTML 시각화 저장 중 오류 발생: {str(e2)}")
+                return None
+    
     def _create_workflow(self):
         """워크플로우 생성"""
         # 상태 타입 정의
@@ -47,7 +83,7 @@ class WorkflowManager:
             documents: List[Any] = []
             question_type: str = "academic" # 기본값은 학술 질문
             run_id: str = None  # LangSmith 추적을 위한 run_id 필드 추가
-            similarity_scores: List[float] = []  # 유사도 점수 리스트
+            similarity_scores: List[float] = []  # l2 거리 리스트
             use_tavily: bool = False  # 타빌리 검색 사용 여부
             tavily_results: List[Any] = []  # 타빌리 검색 결과
         
@@ -83,12 +119,30 @@ class WorkflowManager:
             """관련 문서 검색"""
             question = state["messages"][-1].content
             try:
-                # similarity_search_with_score 메서드 사용하여 유사도 점수 획득
+                # similarity_search_with_score 메서드 사용하여 l2 거리 획득
                 docs_with_scores = workflow_manager.vector_store.similarity_search_with_score(question, k=3)
                 
                 # 문서와 점수 분리
-                docs = [doc for doc, _ in docs_with_scores]
-                scores = [float(score) for _, score in docs_with_scores]
+                docs = []
+                scores = []
+                
+                # 거리 임계값 설정 (L2 거리가 클수록 유사도가 낮음)
+                distance_threshold = 540  # L2 거리 임계값
+                
+                # 임계값보다 낮은 거리(높은 유사도)를 가진 문서만 선택
+                filtered_docs_with_scores = []
+                for doc, score in docs_with_scores:
+                    if float(score) <= distance_threshold:
+                        filtered_docs_with_scores.append((doc, float(score)))
+                        docs.append(doc)
+                        scores.append(float(score))
+                
+                # 최소 L2 거리 계산
+                min_distance = min(scores) if scores else float('inf')
+                
+                print(f"검색된 문서: {len(docs_with_scores)}개, 임계값 이하 문서: {len(docs)}개 (임계값: {distance_threshold})")
+                if scores:
+                    print(f"최소 L2 거리: {min_distance:.4f}, 평균 L2 거리: {sum(scores)/len(scores):.4f}")
                 
                 # 각 문서에 필요한 메타데이터가 있는지 확인하고 보완
                 for i, doc in enumerate(docs):
@@ -116,20 +170,17 @@ class WorkflowManager:
                     # journal이 없는 경우 기본값 설정
                     if 'journal' not in doc.metadata:
                         doc.metadata['journal'] = "학술 저널"
+                        
+                    # 거리 정보도 메타데이터에 추가
+                    doc.metadata['distance_score'] = scores[i]
                 
-                # 평균 유사도 점수 계산
-                avg_score = sum(scores) / len(scores) if scores else 0
-                
-                print(f"{len(docs)}개의 관련 문서를 검색했습니다. 평균 유사도 점수: {avg_score:.4f}")
-                
-                # 유사도 임계값 설정 (낮을수록 유사도가 높음)
-                similarity_threshold = 0.25
-                use_tavily = avg_score > similarity_threshold
+                # 임계값 이하의 문서가 없으면 타빌리 검색 사용
+                use_tavily = len(docs) == 0
                 
                 if use_tavily:
-                    print(f"유사도가 낮아 타빌리 검색으로 전환합니다 (점수: {avg_score:.4f} > {similarity_threshold})")
-                    # 유사도가 낮을 경우 논문 문서를 완전히 제외
-                    docs = []
+                    print(f"임계값({distance_threshold}) 이하의 유사한 문서가 없어 타빌리 검색으로 전환합니다.")
+                else:
+                    print(f"임계값({distance_threshold}) 이하의 유사한 문서 {len(docs)}개를 사용합니다.")
                 
                 return {
                     "messages": state["messages"], 

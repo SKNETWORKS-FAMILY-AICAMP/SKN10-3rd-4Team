@@ -1,10 +1,16 @@
 import os
+import sys
+import logging
 import chainlit as cl
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain.globals import set_verbose
 from langchain.callbacks.tracers.langchain import wait_for_all_tracers
 from dotenv import load_dotenv
+
+# src 디렉토리를 시스템 경로에 추가
+if os.path.join(os.getcwd(), 'src') not in sys.path:
+    sys.path.append(os.path.join(os.getcwd(), 'src'))
 
 # 환경 변수 로드
 load_dotenv()
@@ -26,7 +32,8 @@ from src.utils.data_loader import load_data
 from src.rag.vectorstore import get_vector_store
 from src.models.llm import LLMManager
 from src.models.workflow import WorkflowManager
-from src.visualization.graph_visualizer import visualize_langgraph_workflow, visualize_simple_langgraph_workflow
+from src.visualization.graph_visualizer import visualize_langgraph_workflow,  visualize_current_workflow
+
 
 # Configuration
 CSV_PATH = "data/cleaned_pubmed_papers.csv"
@@ -99,21 +106,52 @@ async def on_chat_start():
             
             # 워크플로우 시각화
             try:
-                # 기존 이미지 파일 삭제 (있으면)
-                viz_path = "visualization/simple_langgraph_workflow.png"
-                if os.path.exists(viz_path):
-                    os.remove(viz_path)
-                    
-                # 새 시각화 이미지 생성
-                graph_path = visualize_simple_langgraph_workflow()
-                cl.logger.info(f"새 워크플로우 이미지 생성됨: {graph_path}")
+                # 전체 경로로 이미지 파일 경로 지정
+                project_root = os.getcwd()
+                viz_dir = os.path.join(project_root, "visualization")
+                viz_path = os.path.join(viz_dir, "langgraph_workflow.png")
                 
-                elements = [
-                    cl.Image(name="workflow_diagram", display="inline", path=graph_path)
-                ]
-                await cl.Message(content="LangGraph 워크플로우 다이어그램:", elements=elements).send()
+                # 디렉토리가 없으면 생성
+                if not os.path.exists(viz_dir):
+                    os.makedirs(viz_dir, exist_ok=True)
+                    cl.logger.info(f"visualization 디렉토리 생성됨: {viz_dir}")
+                
+                # 이미지가 이미 존재하면 새로 생성하지 않고 기존 이미지 사용
+                if os.path.exists(viz_path) and os.path.getsize(viz_path) > 0:
+                    cl.logger.info(f"기존 워크플로우 이미지 사용: {viz_path}")
+                    graph_path = viz_path
+                else:
+                    # 이미지가 없거나 비어있는 경우 LangGraph 내장 시각화 기능 사용
+                    cl.logger.info(f"LangGraph 내장 시각화 기능으로 워크플로우 이미지 생성 시작...")
+                    graph_path = workflow_manager.visualize_workflow(viz_path)
+                    if graph_path:
+                        cl.logger.info(f"새 워크플로우 이미지 생성됨: {graph_path}")
+                    else:
+                        # 시각화 실패 시 기존 방식으로 시도
+                        cl.logger.warning("LangGraph 내장 시각화 실패, NetworkX 방식으로 시도")
+                        graph_path = visualize_current_workflow()
+                        cl.logger.info(f"NetworkX로 새 워크플로우 이미지 생성됨: {graph_path}")
+                
+                # 이미지 파일 존재 확인
+                if os.path.exists(graph_path):
+                    # 이미지 표시
+                    elements = [
+                        cl.Image(name="workflow_diagram", display="inline", path=graph_path)
+                    ]
+                    await cl.Message(content="LangGraph 워크플로우 다이어그램:", elements=elements).send()
+                    
+                    # HTML 파일도 있는지 확인하여 링크 제공
+                    html_path = graph_path.replace(".png", ".html")
+                    if os.path.exists(html_path):
+                        # HTML 파일 경로에서 상대 URL 생성
+                        html_rel_path = os.path.relpath(html_path, project_root)
+                        await cl.Message(content=f"[인터랙티브 워크플로우 다이어그램]({html_rel_path})").send()
+                else:
+                    cl.logger.error(f"이미지 파일이 존재하지 않음: {graph_path}")
+                    await cl.Message(content="워크플로우 다이어그램을 표시할 수 없습니다.").send()
             except Exception as e:
                 cl.logger.error(f"워크플로우 시각화 실패: {str(e)}")
+                await cl.Message(content=f"워크플로우 시각화 중 오류: {str(e)}").send()
         except Exception as e:
             step.output = f"워크플로우 초기화 실패: {str(e)}"
             await cl.Message(content="워크플로우 초기화 중 오류가 발생했습니다.").send()

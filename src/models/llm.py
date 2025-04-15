@@ -161,17 +161,19 @@ class LLMManager:
         답변 작성 과정:
         1. 제공된 논문들 중 질문과 직접적인 관련이 있는 논문들만 선별하세요
         2. 관련성이 낮거나 질문에 도움이 되지 않는 논문은 분석에서 제외하세요
-        3. 선별한 논문들의 정보(제목, 저널, ID 등)를 명확히 확인하세요
-        4. 선별한 논문들의 정보를 종합하여 하나의 일관된 답변을 작성하세요
+        3. l2 거리가 낮은(유사도가 높은) 논문들을 더 중요하게 고려하세요
+        4. 선별한 논문들의 정보(제목, 저널, ID 등)를 명확히 확인하세요
+        5. 선별한 논문들의 정보를 종합하여 하나의 일관된 답변을 작성하세요
 
         답변 작성 지침:
         1. 답변 시작 부분에 참고한 논문의 제목들을 명확히 언급하세요 (예: "~라는 제목의 논문에 따르면...")
-        2. 선별한 논문들 간의 공통점과 차이점을 파악하여 분석하세요
-        3. 각 논문의 핵심 발견과 결론을 통합적으로 설명하세요
-        4. 답변 내용을 명확하게 설명하고 논리적으로 구성하세요
-        5. 선별한 논문의 메타데이터(제목, 저널, 저자 등)를 반드시 포함하여 언급하세요
-        6. 정보가 불충분하거나 논문 간 상충되는 내용이 있는 경우 정직하게 인정하세요
-        7. 웹 검색 결과가 포함된 경우, 논문 정보와 웹 검색 결과를 적절히 구분하여 활용하세요
+        2. 유사도가 높은 논문(l2 거리가 낮은 논문)을 우선적으로 참고하세요
+        3. 선별한 논문들 간의 공통점과 차이점을 파악하여 분석하세요
+        4. 각 논문의 핵심 발견과 결론을 통합적으로 설명하세요
+        5. 답변 내용을 명확하게 설명하고 논리적으로 구성하세요
+        6. 선별한 논문의 메타데이터(제목, 저널, 저자 등)를 반드시 포함하여 언급하세요
+        7. 정보가 불충분하거나 논문 간 상충되는 내용이 있는 경우 정직하게 인정하세요
+        8. 웹 검색 결과가 포함된 경우, 논문 정보와 웹 검색 결과를 적절히 구분하여 활용하세요
 
         한국어로 명확하고 전문적인 답변을 제공해 주세요.
         """
@@ -211,15 +213,18 @@ class LLMManager:
             else:
                 pubmed_docs.append(doc)
         
-        # 논문 정보 포맷팅
+        # 논문 정보 포맷팅 (L2 거리 기준으로 정렬)
         if pubmed_docs:
-            formatted_context += "== PubMed 논문 정보 ==\n\n"
+            # L2 거리가 낮은 순(유사도가 높은 순)으로 정렬
+            pubmed_docs.sort(key=lambda x: x.metadata.get('distance_score', float('inf')))
+            formatted_context += "== PubMed 논문 정보 (유사도 높은 순) ==\n\n"
             
             for i, doc in enumerate(pubmed_docs):
                 title = doc.metadata.get('title', '제목 없음')
                 paper_id = doc.metadata.get('paper_id', 'N/A')
                 journal = doc.metadata.get('journal', 'N/A')
                 pmid = doc.metadata.get('pmid', 'N/A')
+                distance_score = doc.metadata.get('distance_score', 'N/A')
                 
                 formatted_context += f"[논문 {i+1}]\n"
                 formatted_context += f"제목: {title}\n"
@@ -231,6 +236,10 @@ class LLMManager:
                     
                 if journal != 'N/A':
                     formatted_context += f"저널: {journal}\n"
+                
+                # L2 거리 정보 추가 (낮을수록 유사도가 높음)
+                if distance_score != 'N/A':
+                    formatted_context += f"l2 거리: {distance_score:.2f} (값이 낮을수록 유사도가 높음)\n"
                 
                 # 본문 내용 추가
                 formatted_context += f"내용:\n{doc.page_content}\n\n"
