@@ -12,7 +12,7 @@ from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 from langchain.callbacks.manager import CallbackManager
 
 class LLMManager:
-    def __init__(self, model_name="llama2", base_url="http://localhost:11434", temperature=0.1, streaming=False):
+    def __init__(self, model_name, base_url="http://localhost:11434", temperature=0.1, streaming=False):
         self.model_name = model_name
         self.base_url = base_url
         self.temperature = temperature
@@ -122,28 +122,31 @@ class LLMManager:
             return response
 
     def create_counseling_prompt(self, question, context=None):
-        """
-        상담 질문에 대한 프롬프트를 생성합니다.
-        
-        Args:
-            question (str): 사용자 질문
-            context (str, optional): 유튜브 컨텍스트
-        """
-        template = """
-        당신은 우울증 상담 전문가입니다. 사용자의 우울한 감정과 고민에 공감하고 도움이 되는 조언을 제공해 주세요.
+        template = f"""
+        당신은 우울증 상담 전문가입니다. 사용자의 감정과 고민에 진심으로 공감하고, 따뜻하고 도움이 되는 조언을 제공해 주세요.
 
-        사용자 메시지: {question}
-        {context_section}
+        사용자 메시지:
+        {question}
+
+        참고 정보 (사용자 메시지를 이해하는 데 도움이 될 수 있음):
+        {context or "없음"}
+
+        ※ 매우 중요:
+        - 위 참고 정보는 사용자 경험이 아닐 수 있습니다.
+        - 해당 내용을 실제 사용자 경험처럼 해석하거나 말하지 마세요.
+        - 사용자 질문을 중심으로 판단하고 응답을 구성하세요.
+        - 절대로 '영상에서 말하신 것처럼' 등의 출처 언급을 하지 마세요.
+        - 참고 정보는 조심스럽게만 반영하되, 직접적 인용이나 언급 없이 일반적인 설명으로 활용하세요.
+        - 사용자 메시지에 정보가 너무 적다면 구체화해달라고 요청하세요.(예: 사용자 메시지: "나 우울해" 답변: "우울증 증상에 대해 더 자세히 알려주시겠어요?")
+
         상담 지침:
-        1. 사용자의 감정에 충분히 공감하세요
-        2. 판단하지 말고 경청하는 태도를 보여주세요
-        3. 구체적이고 실행 가능한 조언을 제공하세요
-        4. 필요하다면 전문적인 상담을 권유하세요
-        5. 단, 의학적 진단이나 처방은 제공하지 마세요
-        6. 자살/자해 관련 내용이 언급되면 즉시 전문가 상담을 권유하세요
-        7. 제공된 유튜브 컨텍스트가 있다면, 이를 참고하여 더 구체적이고 실질적인 조언을 제공하세요
-
-        따뜻하고 공감적인 한국어로 응답해 주세요.
+        1. 감정에 공감하고 따뜻하게 말해 주세요.
+        2. 판단하지 말고 경청의 태도를 보여 주세요.
+        3. 구체적이고 실천 가능한 조언을 주세요.
+        4. 의학적 진단이나 처방은 피하고, 필요하면 전문가 상담을 권유하세요.
+        5. 자살·자해 언급이 있으면 반드시 즉시 전문가 상담을 권유하세요.
+       
+        한국어로, 진심 어린 말투로 응답해 주세요.
         """
 
         context_section = f"\n\n참고할 유튜브 컨텍스트:\n{context}\n" if context else ""

@@ -62,11 +62,7 @@ style: |
 
 | 김현수 | 남궁승원 | 조현정 | 황인호 |
 |:----------:|:----------:|:----------:|:----------:|
-<<<<<<< HEAD
 | <img src="images/sad_hyunsoo.png" alt="image" width="150" height="150"/> | <img src="images/sad_seungwon.png" alt="image" width="150" height="150"/> |<img src="images/sad_hyunjung.png" alt="image" width="150" height="150"/>  | <img src="images/sad_inho.png" alt="image" width="150" height="150"/> |
-=======
-| <img src="images/sad_hyunsoo.png" alt="image" width="250"/> | <img src="images/sad_seungwon.png" alt="image" width="250"/> |<img src="images/sad_hyunjung.png" alt="image" width="250"/>  | <img src="images/sad_inho.png" alt="image" width="250"/> |
->>>>>>> fe2b2aab00d699cb39476cfb0c2bf92dcbe4bd38
 
 ---
 
@@ -87,16 +83,11 @@ style: |
 
 ---
 
-<<<<<<< HEAD
 <img src="images/depression-stats.png" alt="우울증 통계" width="800" height="500"/>
 
 ---
 
 <img src="images/depression_ver2.png" alt="우울증 통계" width="800" height="500"/>
-=======
-<img src="images/depression-stats.png" alt="우울증 통계" width="400"/>
-<img src="images/depression_ver2.png" alt="우울증 통계" width="700"/>
->>>>>>> fe2b2aab00d699cb39476cfb0c2bf92dcbe4bd38
 
 ---
 
@@ -256,12 +247,7 @@ TAVILY_API_KEY=your_tavily_api_key  # 타빌리 API 키 추가
 chainlit run app.py
 ```
 
-<<<<<<< HEAD
 ---
-=======
-## 6. 시스템 아키텍쳐
-<img src="images/FlowChart.png" width="600"/>
->>>>>>> fe2b2aab00d699cb39476cfb0c2bf92dcbe4bd38
 
 <!-- _class: title -->
 # 6. 시스템 아키텍쳐
@@ -424,7 +410,6 @@ def create_prompt(self, question, context):
     한국어로 명확하고 전문적인 답변을 제공해 주세요.
     """
 ```
-<<<<<<< HEAD
 
 ---
 
@@ -453,21 +438,6 @@ def create_prompt(self, question, context):
 
 ## LangGraph 워크플로우
 <img src="images/langsmith.png" width="500" height="600"/>
-=======
-## 10. 결과
-- Counselor ver.
-<img src="images/test_counselor.png" width="600"/>
-<img src="images/test_counselor_terminal.png" width="600"/>
-
-<br><br>
-- Reseracher ver
-<img src="images/test_researcher.png" width="600"/>
-<img src="images/test_researcher_terminal.png" width="600"/>
-
-<br><br>
-- LangGraph
-<img src="images/langsmith.png" width="500"/>
->>>>>>> fe2b2aab00d699cb39476cfb0c2bf92dcbe4bd38
 
 ---
 
