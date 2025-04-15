@@ -4,22 +4,10 @@ theme: default
 paginate: true
 backgroundColor: #fff
 style: |
-  section h1 {
-    font-size: 42px;
-    color: #333;
-  }
-  section h2 {
-    font-size: 36px;
-    color: #0066cc;
-  }
-  section h3 {
-    font-size: 32px;
-    color: #444;
-  }
-  section img {
-    display: block;
-    margin: 0 auto;
-  }
+  section h1 { font-size: 42px; color: #333; }
+  section h2 { font-size: 36px; color: #0066cc; }
+  section h3 { font-size: 32px; color: #444; }
+  section img { display: block; margin: 0 auto; }
   section.title {
     text-align: center;
     display: flex;
@@ -47,6 +35,7 @@ style: |
     margin: 0 3px;
   }
 ---
+
 
 <!-- _class: title -->
 # 우울증 관련 정보 제공 챗봇
