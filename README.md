@@ -4,9 +4,6 @@ theme: default
 paginate: true
 backgroundColor: #fff
 style: |
-  section {
-    font-size: 24px;
-  }
   section h1 {
     font-size: 42px;
     color: #333;
@@ -62,7 +59,7 @@ style: |
 
 | 김현수 | 남궁승원 | 조현정 | 황인호 |
 |:----------:|:----------:|:----------:|:----------:|
-| <img src="images/sad_hyunsoo.png" alt="image" width="200" height="150"/> | <img src="images/sad_seungwon.png" alt="image" width="200" height="150"/> |<img src="images/sad_hyunjung.png" alt="image" width="200" height="150"/>  | <img src="images/sad_inho.png" alt="image" width="200" height="150"/> |
+| <img src="images/sad_hyunsoo.png" alt="image" width="250" height="200"/> | <img src="images/sad_seungwon.png" alt="image" width="250" height="200"/> |<img src="images/sad_hyunjung.png" alt="image" width="250" height="200"/>  | <img src="images/sad_inho.png" alt="image" width="250" height="200"/> |
 
 ---
 
@@ -84,16 +81,12 @@ style: |
 ---
 
 <img src="images/depression-stats.png" alt="우울증 통계" width="800"/>
+-출처 : 건강보험심사평가원
 
 ---
 
 <img src="images/depression_ver2.png" alt="우울증 통계" width="800"/>
-
----
-
-**출처**  
-- [[그래픽] 우울증 환자 수·진료비 추이](https://www.yna.co.kr/view/GYH20240110000200044)
-- [우울증 환자 5명 중 1명은 '20대'...타 연령대 압도](https://www.edaily.co.kr/News/Read?newsId=02046726632365000&mediaCodeNo=257)
+-출처 : 건강보험심사평가원
 
 ---
 
@@ -134,6 +127,10 @@ style: |
     <img src="https://img.shields.io/badge/-Cursor-1A1A1A?logo=cursor&logoColor=white" alt="Cursor"/>
     <img src="https://img.shields.io/badge/-Google%20Colab-F9AB00?logo=googlecolab&logoColor=white" alt="Colab"/>
     <img src="https://img.shields.io/badge/-RunPod-5F43DC?logo=cloud&logoColor=white" alt="RunPod"/>
+    <img src="https://img.shields.io/badge/-LangChain-1A1A1A?logo=langchain&logoColor=white" alt="LangChain"/>
+    <img src="https://img.shields.io/badge/-OpenAI-1A1A1A?logo=openai&logoColor=white" alt="OpenAI"/>
+
+
   </div>
   
   <div class="tech-stack-item">협업 툴:</div>
