@@ -52,17 +52,17 @@ style: |
 ---
 
 <!-- _class: title -->
-# 🤖💬 우울증 관련 정보 제공 챗봇 🤖💬
+# 우울증 관련 정보 제공 챗봇
 ## SKN10-3rd-4Team 3차 단위 프로젝트
 ### 김현수, 남궁승원, 조현정, 황인호
 
 ---
-
+# 우울하조
 ## 팀원
 
 | 김현수 | 남궁승원 | 조현정 | 황인호 |
 |:----------:|:----------:|:----------:|:----------:|
-| <img src="images/sad_hyunsoo.png" alt="image" width="150" height="150"/> | <img src="images/sad_seungwon.png" alt="image" width="150" height="150"/> |<img src="images/sad_hyunjung.png" alt="image" width="150" height="150"/>  | <img src="images/sad_inho.png" alt="image" width="150" height="150"/> |
+| <img src="images/sad_hyunsoo.png" alt="image" width="200" height="150"/> | <img src="images/sad_seungwon.png" alt="image" width="200" height="150"/> |<img src="images/sad_hyunjung.png" alt="image" width="200" height="150"/>  | <img src="images/sad_inho.png" alt="image" width="200" height="150"/> |
 
 ---
 
@@ -83,11 +83,11 @@ style: |
 
 ---
 
-<img src="images/depression-stats.png" alt="우울증 통계" width="800" height="500"/>
+<img src="images/depression-stats.png" alt="우울증 통계" width="500"/>
 
 ---
 
-<img src="images/depression_ver2.png" alt="우울증 통계" width="800" height="500"/>
+<img src="images/depression_ver2.png" alt="우울증 통계" width="500"/>
 
 ---
 
@@ -98,20 +98,20 @@ style: |
 ---
 
 <!-- _class: title -->
-# 2. 🎯 프로젝트 목표
+# 2.프로젝트 목표
 
 ---
 
 ## 프로젝트 목표
 
-- 💬 **질문/답변 기반 상호작용**  
+- **질문/답변 기반 상호작용**  
   - 자연어로 질문을 하면 챗봇이 즉시 답변
   - 질문 내용에 따라 다른 방식으로 답변
 
-- 🧠 **우울증 관련 정보 제공**  
+- **우울증 상담 및 정보 제공**  
   - 증상, 원인, 우울증에 도움이 되는 정보 등 다양한 정신건강 관련 지식 제공
 
-- 📚 **관련 논문 제공 기능**  
+- **관련 논문 제공 기능**  
   - 사용자의 질문 내용을 분석해 관련된 신뢰도 높은 논문 3편 추천
 
 ---
@@ -156,7 +156,7 @@ style: |
 ---
 
 <!-- _class: title -->
-# 4. 📂 프로젝트 구조
+# 4. 프로젝트 구조
 
 ---
 
@@ -254,7 +254,7 @@ chainlit run app.py
 
 ---
 
-<img src="images/FlowChart.png" width="700" height="400"/>
+<img src="images/FlowChart.png" width="800"/>
 
 ---
 
@@ -419,25 +419,25 @@ def create_prompt(self, question, context):
 ---
 
 ## Counselor 버전
-<img src="images/counseling.png" width="700" height="400"/>
+<img src="images/counseling.png" width="400"/>
 
 ---
 
-<img src="images/test_counselor_terminal.png" width="700" height="400"/>
+<img src="images/test_counselor_terminal.png" width="700"/>
 
 ---
 
 ## Researcher 버전
-<img src="images/research.png" width="700" height="400"/>
+<img src="images/research.png" width="400"/>
 
 ---
 
-<img src="images/test_researcher_terminal.png" width="700" height="400"/>
+<img src="images/test_researcher_terminal.png" width="700"/>
 
 ---
 
 ## LangGraph 워크플로우
-<img src="images/langsmith.png" width="500" height="600"/>
+<img src="images/WorkFlow.png" width="700"/>
 
 ---
 
@@ -448,13 +448,16 @@ def create_prompt(self, question, context):
 
 ## 팀원 회고
 
-- **김현수👑👍**: 
+- **김현수**: RAG와 랭체인, 랭그래프에 대해 실제 챗봇으로 구성하는 모습을 보며 좋은 공부가 되었고,
+코드 작성해주는 AI을 잘 사용하지 않았는데 팀원분이 기본 틀을 구성한다거나 어시스트로 활용을 너무 잘하는 모습을 보며 너무 틀에 박혀있었나 싶었고 잘 써보는 연습을 해봐야겠다는 생각이 들었습니다.
 
-- **남궁승원**: 처음부터 인원이 줄어서 4명으로 시작해서 인원이 부족한 상황에서 무능한 조장 데리고 이끌어서 완료해주신 유능한 조원분들께 감사드립니다.
+- **남궁승원**: 처음부터 인원이 줄어서 4명으로 시작해서 인원이 부족한 상황에서 부족족한 조장 데리고 이끌어서 완료해주신 유능한 조원분들께 감사드리고, LLM쪽을 기본부터 다시 학습해야겠다고 느꼈습니다
 
-- **조현정👑👍**: 
+---
 
-- **황인호👑👍**:
+- **조현정**: 랭체인/랭그래프를 실질적으로 다뤄볼 수 있어서 좋았습니다. 다같이 열정적으로 프로젝트를 해볼 수 있어 더 값진 경험이었습니다. 감사합니다.
+
+- **황인호**: 기존에 사용했던 실제 상담 질의응답 데이터셋이 질문과 대답끼리 제대로 매핑도 안되어있고, 뉘앙스만 조금씩 다른 질의응답이 너무 많아 과적합이 너무 잘발생하였다. ( 예: 안녕? 이라고했을때 우울증 걸렸다고 단정짓기) 이는 rag로만 데이터를 참조할수있게 하는것으로 해결하였지만 아무리 실제 데이터 들이라도 그 데이터가 llm 학습에 적합한지는 별개의 문제 같다.
 
 ---
 
