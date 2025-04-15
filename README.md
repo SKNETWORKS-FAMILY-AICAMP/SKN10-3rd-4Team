@@ -8,7 +8,7 @@
 
 | 김현수 | 남궁승원 | 조현정 | 황인호 |
 |:----------:|:----------:|:----------:|:----------:|
-| <img src="images/sad_hyunsoo.png" alt="image" width="250" height="250"/> | <img src="images/sad_seungwon.png" alt="image" width="250" height="250"/> |<img src="images/sad_hyunjung.png" alt="image" width="250" height="250"/>  | <img src="images/sad_inho.png" alt="image" width="250" height="250"/> |
+| <img src="images/sad_hyunsoo.png" alt="image" width="250"/> | <img src="images/sad_seungwon.png" alt="image" width="250"/> |<img src="images/sad_hyunjung.png" alt="image" width="250"/>  | <img src="images/sad_inho.png" alt="image" width="250"/> |
 
 <br>
 </div>
@@ -25,8 +25,8 @@
 - 정확하고 신뢰할 수 있는 정보 제공은 우울증 인식 개선과 예방에 중요한 역할을 합니다.
 <br>
 
-<img src="images/depression-stats.png" alt="우울증 통계" width="800" height="500"/>
-<img src="images/depression_ver2.png" alt="우울증 통계" width="800" height="500"/>
+<img src="images/depression-stats.png" alt="우울증 통계" width="800"/>
+<img src="images/depression_ver2.png" alt="우울증 통계" width="800"/>
 
 <br><br>
 **출처**  
@@ -130,7 +130,7 @@ chainlit run app.py
 ```
 
 ## 6. 시스템 아키텍쳐
-<img src="images/FlowChart.png" width="600" height="300"/>
+<img src="images/FlowChart.png" width="600"/>
 
 <br>
 
@@ -275,17 +275,17 @@ def create_prompt(self, question, context):
 ```
 ## 10. 결과
 - Counselor ver.
-<img src="images/test_counselor.png" width="600" height="300"/>
-<img src="images/test_counselor_terminal.png" width="600" height="300"/>
+<img src="images/test_counselor.png" width="600"/>
+<img src="images/test_counselor_terminal.png" width="600"/>
 
 <br><br>
 - Reseracher ver
-<img src="images/test_researcher.png" width="600" height="300"/>
-<img src="images/test_researcher_terminal.png" width="600" height="300"/>
+<img src="images/test_researcher.png" width="600"/>
+<img src="images/test_researcher_terminal.png" width="600"/>
 
 <br><br>
 - LangGraph
-<img src="images/langsmith.png" width="500" height="600"/>
+<img src="images/langsmith.png" width="500"/>
 
 ## 11. 회고록
 - 김현수👑👍: 
