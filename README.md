@@ -83,11 +83,11 @@ style: |
 
 ---
 
-<img src="images/depression-stats.png" alt="우울증 통계" width="500"/>
+<img src="images/depression-stats.png" alt="우울증 통계" width="800"/>
 
 ---
 
-<img src="images/depression_ver2.png" alt="우울증 통계" width="500"/>
+<img src="images/depression_ver2.png" alt="우울증 통계" width="800"/>
 
 ---
 
@@ -109,7 +109,7 @@ style: |
   - 질문 내용에 따라 다른 방식으로 답변
 
 - **우울증 상담 및 정보 제공**  
-  - 증상, 원인, 우울증에 도움이 되는 정보 등 다양한 정신건강 관련 지식 제공
+  - 사용자의 감정에 공감 및 정보 제공
 
 - **관련 논문 제공 기능**  
   - 사용자의 질문 내용을 분석해 관련된 신뢰도 높은 논문 3편 추천
@@ -254,7 +254,7 @@ chainlit run app.py
 
 ---
 
-<img src="images/FlowChart.png" width="800"/>
+<img src="images/FlowChart.png" width="900"/>
 
 ---
 
@@ -438,6 +438,12 @@ def create_prompt(self, question, context):
 
 ## LangGraph 워크플로우
 <img src="images/WorkFlow.png" width="700"/>
+
+---
+
+
+## LangGraph
+<img src="images/langsmith.png" width="700"/>
 
 ---
 
