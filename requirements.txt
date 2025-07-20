@@ -1,0 +1,12 @@
+Chainlit
+pandas
+langchain
+langchain-community
+faiss-cpu
+ipywidgets
+python-dotenv
+langgraph
+biopython
+requests
+beautifulsoup4
+tavily-python

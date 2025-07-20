@@ -1,0 +1,20 @@
+{
+  "model": {
+    "name": "hf.co/HIHO999/gemma3-finetune-Depression-gguf:latest",
+    "base_url": "http://localhost:11434",
+    "temperature": 0.1
+  },
+  "vector_store": {
+    "path": "pubmed_vectors"
+  },
+  "data": {
+    "csv_path": "cleaned_pubmed_papers.csv"
+  },
+  "embeddings": {
+    "model": "bge-m3",
+    "base_url": "http://localhost:11434"
+  },
+  "retrieval": {
+    "top_k": 5
+  }
+}
